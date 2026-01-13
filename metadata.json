@@ -1,0 +1,7 @@
+{
+  "name": "Chronos Daily Planner",
+  "description": "A high-performance 24-hour daily routine planner with timeline visualization, persistent storage, and AI-powered productivity insights.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

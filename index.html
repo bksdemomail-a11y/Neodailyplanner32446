@@ -1,0 +1,112 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Chronos - 24-Hour Routine Planner</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#020617">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      overflow: hidden;
+      background: #020617; /* Deep Midnight */
+      color: #f8fafc;
+      /* Prevents pull-to-refresh on mobile */
+      overscroll-behavior-y: contain;
+    }
+
+    .scrollbar-hide::-webkit-scrollbar {
+      display: none;
+    }
+    .scrollbar-hide {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    #bg-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: -1;
+      overflow: hidden;
+      background: #020617;
+    }
+
+    #motivation-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: -1;
+      overflow: hidden;
+    }
+
+    .motivation-word {
+      position: absolute;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.6em;
+      color: #1e293b;
+      opacity: 0;
+      font-size: 1.1rem;
+      pointer-events: none;
+      white-space: nowrap;
+      animation: float-word 14s ease-in-out forwards;
+    }
+
+    @keyframes float-word {
+      0% {
+        opacity: 0;
+        transform: translateY(30px) scale(0.9);
+      }
+      20% {
+        opacity: 0.15;
+      }
+      50% {
+        opacity: 0.25;
+        transform: translateY(0px) scale(1);
+      }
+      80% {
+        opacity: 0.15;
+      }
+      100% {
+        opacity: 0;
+        transform: translateY(-40px) scale(1.1);
+      }
+    }
+
+    .dark-panel {
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+  </style>
+<script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
+  }
+}
+</script>
+</head>
+<body class="dark">
+  <div id="bg-container">
+    <div id="motivation-layer"></div>
+  </div>
+  <div id="root"></div>
+</body>
+</html>
