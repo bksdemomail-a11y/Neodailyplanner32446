@@ -8,7 +8,7 @@ interface TimelineProps {
   onAddTask: (startTime: number, endTime: number) => void;
   onEditTask: (task: TimeBlock) => void;
   onDeleteTask: (id: string) => void;
-  onToggleComplete: (id: string) => void;
+  onToggleComplete: (id: string, completed: boolean) => void;
   selectionStart: number | null;
   setSelectionStart: (time: number | null) => void;
   isReadOnly?: boolean;
