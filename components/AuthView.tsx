@@ -14,26 +14,30 @@ const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (isLogin) {
-      const user = storageService.loginUser(username, password);
-      if (user) {
-        onAuthSuccess(user);
+    try {
+      if (isLogin) {
+        const user = await storageService.loginUser(username, password);
+        if (user) {
+          onAuthSuccess(user);
+        } else {
+          setError('Invalid username or password');
+        }
       } else {
-        setError('Invalid username or password');
+        const user = storageService.registerUser(username, password);
+        if (user) {
+          // Log them in immediately after registration to fetch cloud data/set state
+          await storageService.loginUser(username, password);
+          onAuthSuccess(user);
+        } else {
+          setError('Username already exists');
+        }
       }
-    } else {
-      const user = storageService.registerUser(username, password);
-      if (user) {
-        // Log them in immediately after registration
-        storageService.loginUser(username, password);
-        onAuthSuccess(user);
-      } else {
-        setError('Username already exists');
-      }
+    } catch (err) {
+      setError('An unexpected error occurred. Please try again.');
     }
   };
 
