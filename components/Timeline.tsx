@@ -33,14 +33,13 @@ const Timeline: React.FC<TimelineProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // Geometry: Arcs are now the outermost ring ("The Head")
   const SIZE = 500;
   const CENTER = SIZE / 2;
-  const TASK_RADIUS = 215;   // Moved to the outer edge
-  const LABEL_RADIUS = 165;  // Numbers moved inward
+  const TASK_RADIUS = 215;
+  const LABEL_RADIUS = 165;
   const TICK_OUTER = 145;
   const TICK_INNER = 135;
-  const INTERVAL_RADIUS = 115; // Dots moved inward
+  const INTERVAL_RADIUS = 115;
 
   const timeToAngle = (hour: number) => ((hour % 12) * 30) - 90;
 
@@ -65,13 +64,12 @@ const Timeline: React.FC<TimelineProps> = ({
 
   const handleTimeClick = (e: React.MouseEvent, time: number) => {
     if (isReadOnly) return;
-    e.stopPropagation();
+    e.stopPropagation(); // Prevent deselecting when clicking a valid point
     if (selectionStart === null) {
       setSelectionStart(time);
     } else {
       const s = Math.min(selectionStart, time);
       const f = Math.max(selectionStart, time);
-      // Changed: Clicking the same time twice now creates a 1-hour block (e.g., 11:00 to 12:00)
       onAddTask(s, f === s ? s + 1 : f);
     }
   };
@@ -98,7 +96,6 @@ const Timeline: React.FC<TimelineProps> = ({
 
   const calculateDuration = (t1: number, t2: number) => {
     const diff = Math.abs(t2 - t1);
-    // If double-clicking the same point, display the default 1-hour duration
     const finalDiff = diff === 0 ? 1 : diff;
     const hours = Math.floor(finalDiff);
     const mins = Math.round((finalDiff % 1) * 60);
@@ -246,7 +243,6 @@ const Timeline: React.FC<TimelineProps> = ({
             <circle cx={CENTER} cy={CENTER} r="4" className="fill-white" />
           </svg>
 
-          {/* Central Hub - Reduced size to avoid hiding anything */}
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
              <div className={`text-center bg-black/90 backdrop-blur-3xl p-4 rounded-full w-28 h-28 flex flex-col items-center justify-center border border-white/5 shadow-4xl transition-all duration-500 ${currentTask ? 'scale-110 border-sky-500/20 shadow-sky-500/10' : ''}`}>
                 {currentTask && isCurrentCycle ? (
@@ -284,13 +280,22 @@ const Timeline: React.FC<TimelineProps> = ({
   };
 
   return (
-    <div className="relative flex flex-col w-full mx-auto select-none flex-grow h-full overflow-hidden">
-      <div ref={scrollContainerRef} className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide flex-grow h-full items-center">
+    <div 
+      className="relative flex flex-col w-full mx-auto select-none flex-grow h-full overflow-hidden"
+      onClick={() => !isReadOnly && setSelectionStart(null)}
+    >
+      <div 
+        ref={scrollContainerRef} 
+        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide flex-grow h-full items-center"
+      >
         {renderClock(0, "AM")}
         {renderClock(12, "PM")}
       </div>
 
-      <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex items-center bg-black/95 backdrop-blur-3xl p-1 rounded-full shadow-4xl border border-white/10 z-[60]">
+      <div 
+        className="absolute bottom-1 left-1/2 -translate-x-1/2 flex items-center bg-black/95 backdrop-blur-3xl p-1 rounded-full shadow-4xl border border-white/10 z-[60]"
+        onClick={(e) => e.stopPropagation()}
+      >
         <button onClick={() => scrollToSection(0)} className="px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-[0.4em] text-slate-500 hover:text-sky-400 hover:bg-white/5 transition-all">Morning</button>
         <div className="w-px h-3 bg-white/10 mx-1" />
         <button onClick={() => scrollToSection(1)} className="px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-[0.4em] text-slate-500 hover:text-sky-400 hover:bg-white/5 transition-all">Evening</button>

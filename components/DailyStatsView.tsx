@@ -16,7 +16,8 @@ const DailyStatsView: React.FC<DailyStatsViewProps> = ({ allRoutines, activeDate
 
   const analytics = useMemo(() => {
     const todayStr = activeDate.toISOString().split('T')[0];
-    const routinesArr = Object.values(allRoutines);
+    // Fix: Explicitly cast to DailyRoutine[] to resolve unknown type errors in filters
+    const routinesArr = Object.values(allRoutines) as DailyRoutine[];
     
     // Get time bounds
     const now = new Date();
