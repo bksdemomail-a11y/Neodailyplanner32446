@@ -9,50 +9,34 @@ interface DailyStatsViewProps {
   onBack: () => void;
 }
 
-type RangeType = 'TODAY' | '7D' | '30D' | '1Y' | '2Y' | '5Y';
+type RangeType = '7D' | '30D' | '90D' | '180D' | '365D';
 
 const DailyStatsView: React.FC<DailyStatsViewProps> = ({ allRoutines, activeDate, onBack }) => {
-  const [range, setRange] = useState<RangeType>('TODAY');
+  const [range, setRange] = useState<RangeType>('7D');
 
   const analytics = useMemo(() => {
-    const todayStr = activeDate.toISOString().split('T')[0];
-    // Fix: Explicitly cast to DailyRoutine[] to resolve unknown type errors in filters
     const routinesArr = Object.values(allRoutines) as DailyRoutine[];
     
-    // Get time bounds
-    const now = new Date();
     const getDaysAgo = (days: number) => {
       const d = new Date();
+      d.setHours(0,0,0,0);
       d.setDate(d.getDate() - days);
       return d;
     };
 
-    let targetRoutines: DailyRoutine[] = [];
-    let prevRoutines: DailyRoutine[] = [];
-
-    if (range === 'TODAY') {
-      targetRoutines = routinesArr.filter(r => r.date === todayStr);
-      // For comparison, get average of last 7 days
-      prevRoutines = routinesArr.filter(r => {
-        const d = new Date(r.date);
-        return d < activeDate && d >= getDaysAgo(7);
-      });
-    } else {
-      const days = range === '7D' ? 7 : range === '30D' ? 30 : range === '1Y' ? 365 : range === '2Y' ? 730 : 1825;
-      const start = getDaysAgo(days);
-      const prevStart = getDaysAgo(days * 2);
-      
-      targetRoutines = routinesArr.filter(r => new Date(r.date) >= start);
-      prevRoutines = routinesArr.filter(r => {
-        const d = new Date(r.date);
-        return d >= prevStart && d < start;
-      });
-    }
+    const days = range === '7D' ? 7 : range === '30D' ? 30 : range === '90D' ? 90 : range === '180D' ? 180 : 365;
+    const start = getDaysAgo(days);
+    const prevStart = getDaysAgo(days * 2);
+    
+    const targetRoutines = routinesArr.filter(r => new Date(r.date) >= start);
+    const prevRoutines = routinesArr.filter(r => {
+      const d = new Date(r.date);
+      return d >= prevStart && d < start;
+    });
 
     const calculateExecution = (list: DailyRoutine[]) => {
       let total = 0;
       let completed = 0;
-      let totalHours = 0;
       let completedHours = 0;
 
       list.forEach(r => {
@@ -60,9 +44,7 @@ const DailyStatsView: React.FC<DailyStatsViewProps> = ({ allRoutines, activeDate
           total += r.tasks.length;
           completed += r.tasks.filter(t => t.completed).length;
           r.tasks.forEach(t => {
-            const dur = t.endTime - t.startTime;
-            totalHours += dur;
-            if (t.completed) completedHours += dur;
+            if (t.completed) completedHours += Math.abs(t.endTime - t.startTime);
           });
         }
       });
@@ -70,7 +52,6 @@ const DailyStatsView: React.FC<DailyStatsViewProps> = ({ allRoutines, activeDate
       return {
         rate: total > 0 ? (completed / total) * 100 : 0,
         hours: completedHours,
-        volatility: total > 0 ? completed / total : 0
       };
     };
 
@@ -78,27 +59,19 @@ const DailyStatsView: React.FC<DailyStatsViewProps> = ({ allRoutines, activeDate
     const prevStats = calculateExecution(prevRoutines);
     const momentum = currentStats.rate - prevStats.rate;
 
-    // Generate Graph Data (Crypto Style Trend)
+    // Trend points for graph
     const points: number[] = [];
-    const daysToMap = range === 'TODAY' ? 24 : range === '7D' ? 7 : range === '30D' ? 30 : 50; // Cap long ranges for visual
-    
-    if (range === 'TODAY') {
-      const r = targetRoutines[0];
-      for (let i = 0; i <= 24; i++) {
-        const completedAtThisHour = r?.tasks?.filter(t => t.completed && t.endTime <= i).length || 0;
-        points.push(r?.tasks?.length ? (completedAtThisHour / r.tasks.length) : 0);
-      }
-    } else {
-      for (let i = daysToMap; i >= 0; i--) {
-        const d = getDaysAgo(i).toISOString().split('T')[0];
-        const r = allRoutines[d];
-        const rate = r?.tasks?.length ? (r.tasks.filter(t => t.completed).length / r.tasks.length) : 0;
-        points.push(rate);
-      }
+    for (let i = days - 1; i >= 0; i--) {
+      const d = getDaysAgo(i).toISOString().split('T')[0];
+      const r = allRoutines[d];
+      const rate = (r?.tasks?.length ?? 0) > 0 
+        ? (r!.tasks.filter(t => t.completed).length / r!.tasks.length) 
+        : 0;
+      points.push(rate);
     }
 
-    return { ...currentStats, momentum, points, targetRoutines };
-  }, [allRoutines, activeDate, range]);
+    return { ...currentStats, momentum, points };
+  }, [allRoutines, range]);
 
   const isPositive = analytics.momentum >= 0;
   const graphColor = isPositive ? '#10b981' : '#f43f5e';
@@ -110,8 +83,8 @@ const DailyStatsView: React.FC<DailyStatsViewProps> = ({ allRoutines, activeDate
     const data = analytics.points;
 
     if (data.length < 2) return (
-      <div className="h-full flex items-center justify-center text-slate-700 font-black uppercase tracking-[0.4em] text-[10px]">
-        Insufficient Temporal Data
+      <div className="h-full flex items-center justify-center text-slate-700 font-black uppercase tracking-[0.4em] text-[8px] sm:text-[10px]">
+        Deploying Sensors...
       </div>
     );
 
@@ -125,99 +98,99 @@ const DailyStatsView: React.FC<DailyStatsViewProps> = ({ allRoutines, activeDate
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible" preserveAspectRatio="none">
         <defs>
           <linearGradient id="chart-grad" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor={graphColor} stopOpacity="0.3" />
+            <stop offset="0%" stopColor={graphColor} stopOpacity="0.4" />
             <stop offset="100%" stopColor={graphColor} stopOpacity="0" />
           </linearGradient>
-          <filter id="glow">
+          <filter id="glow-stats">
             <feGaussianBlur stdDeviation="4" result="blur" />
             <feComposite in="SourceGraphic" in2="blur" operator="over" />
           </filter>
         </defs>
-        <path d={`M ${padding},${height-padding} L ${pointsString} L ${width-padding},${height-padding} Z`} fill="url(#chart-grad)" className="transition-all duration-1000" />
-        <polyline fill="none" stroke={graphColor} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" points={pointsString} filter="url(#glow)" className="transition-all duration-1000" />
+        <path d={`M ${padding},${height-padding} L ${pointsString} L ${width-padding},${height-padding} Z`} fill="url(#chart-grad)" className="transition-all duration-700" />
+        <polyline fill="none" stroke={graphColor} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" points={pointsString} filter="url(#glow-stats)" className="transition-all duration-700" />
       </svg>
     );
   };
 
   return (
-    <div className="max-w-7xl mx-auto py-12 px-6 h-full overflow-y-auto no-scrollbar pb-32 animate-in fade-in duration-700">
-      <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-8">
+    <div className="max-w-7xl mx-auto py-8 px-4 h-full overflow-y-auto no-scrollbar pb-32 animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-6">
         <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_10px_#10b981]" />
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em]">Live Market: Execution</span>
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-2 h-2 rounded-full bg-sky-500 shadow-[0_0_10px_#0ea5e9]" />
+            <span className="text-[8px] sm:text-[10px] font-black text-slate-500 uppercase tracking-[0.4em]">Productivity Analytics</span>
           </div>
-          <h2 className="text-5xl font-black text-white tracking-tighter leading-none">Momentum Terminal</h2>
+          <h2 className="text-4xl sm:text-5xl font-black text-white tracking-tighter leading-none">Performance Terminal</h2>
         </div>
-        <div className="flex bg-white/5 p-1 rounded-2xl border border-white/5 backdrop-blur-3xl overflow-x-auto no-scrollbar">
-          {(['TODAY', '7D', '30D', '1Y', '2Y', '5Y'] as RangeType[]).map(r => (
+        <div className="flex bg-white/5 p-1 rounded-xl sm:rounded-2xl border border-white/5 backdrop-blur-3xl overflow-x-auto no-scrollbar">
+          {(['7D', '30D', '90D', '180D', '365D'] as RangeType[]).map(r => (
             <button 
               key={r} 
               onClick={() => setRange(r)}
-              className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${range === r ? 'bg-white text-slate-950 shadow-xl scale-105' : 'text-slate-500 hover:text-white'}`}
+              className={`px-4 sm:px-6 py-2 rounded-lg sm:rounded-xl text-[7px] sm:text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${range === r ? 'bg-white text-slate-950 shadow-xl' : 'text-slate-500 hover:text-white'}`}
             >
-              {r}
+              {r === '180D' ? '6M' : r === '365D' ? '1Y' : r}
             </button>
           ))}
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-10">
-        <div className="lg:col-span-3 bg-slate-900/60 backdrop-blur-3xl rounded-[3.5rem] border border-white/5 p-10 relative overflow-hidden group">
-          <div className="absolute top-10 right-10 flex flex-col items-end">
-             <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Total Productivity</div>
-             <div className="text-4xl font-black text-white tracking-tighter tabular-nums">{analytics.hours.toFixed(1)} <span className="text-xl text-slate-600">HRS</span></div>
+        <div className="lg:col-span-3 bg-slate-900/60 backdrop-blur-3xl rounded-[2.5rem] sm:rounded-[3.5rem] border border-white/5 p-6 sm:p-10 relative overflow-hidden group">
+          <div className="flex flex-col sm:absolute sm:top-10 sm:right-10 items-start sm:items-end mb-8 sm:mb-0">
+             <div className="text-[7px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Total Output</div>
+             <div className="text-3xl sm:text-4xl font-black text-white tracking-tighter tabular-nums">{analytics.hours.toFixed(1)} <span className="text-sm sm:text-xl text-slate-600">HRS</span></div>
           </div>
           
-          <div className="mb-16">
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-2 block">Performance Pulse</span>
+          <div className="mb-8 sm:mb-12">
+            <span className="text-[8px] sm:text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-2 block">Success Rate</span>
             <div className="flex items-baseline gap-4">
-              <span className="text-7xl font-black text-white tracking-tighter tabular-nums">{analytics.rate.toFixed(1)}%</span>
-              <div className={`flex items-center gap-1 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${isPositive ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
-                {isPositive ? '+' : ''}{analytics.momentum.toFixed(1)}% {isPositive ? 'UPRISE' : 'DECLINE'}
+              <span className="text-5xl sm:text-7xl font-black text-white tracking-tighter tabular-nums">{analytics.rate.toFixed(1)}%</span>
+              <div className={`flex items-center gap-1 px-3 py-1 rounded-lg text-[8px] sm:text-[10px] font-black uppercase tracking-widest ${isPositive ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                {isPositive ? '+' : ''}{analytics.momentum.toFixed(1)}% {isPositive ? 'Up' : 'Down'}
               </div>
             </div>
           </div>
 
-          <div className="h-[240px] w-full mt-10">
+          <div className="h-[140px] sm:h-[220px] w-full mt-6">
             {renderSparkline()}
+          </div>
+          <div className="flex justify-between mt-4">
+             <span className="text-[7px] font-black text-slate-600 uppercase tracking-widest">Horizon start</span>
+             <span className="text-[7px] font-black text-slate-600 uppercase tracking-widest">Real-time pulse</span>
           </div>
         </div>
 
-        <div className="space-y-6">
-          <div className="bg-white/5 backdrop-blur-3xl p-8 rounded-[2.5rem] border border-white/5 hover:border-sky-500/30 transition-all flex flex-col justify-between h-1/2">
+        <div className="grid grid-cols-2 lg:grid-cols-1 gap-6">
+          <div className="bg-white/5 backdrop-blur-3xl p-6 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] border border-white/5 flex flex-col justify-between h-36 lg:h-1/2">
              <div className="text-sky-400"><Icons.Sparkles /></div>
              <div>
-                <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Consistency Score</div>
-                <div className="text-3xl font-black text-white tabular-nums">{(analytics.rate * 0.85).toFixed(0)}</div>
+                <div className="text-[7px] sm:text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Consistency index</div>
+                <div className="text-2xl sm:text-3xl font-black text-white tabular-nums">{(analytics.rate * 0.9).toFixed(0)}</div>
              </div>
           </div>
-          <div className="bg-white/5 backdrop-blur-3xl p-8 rounded-[2.5rem] border border-white/5 hover:border-emerald-500/30 transition-all flex flex-col justify-between h-1/2">
+          <div className="bg-white/5 backdrop-blur-3xl p-6 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] border border-white/5 flex flex-col justify-between h-36 lg:h-1/2">
              <div className="text-emerald-400"><Icons.Check /></div>
              <div>
-                <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Targets Liquidated</div>
-                <div className="text-3xl font-black text-white tabular-nums">
-                  {analytics.targetRoutines.reduce((acc, r) => acc + (r.tasks?.filter(t => t.completed).length || 0), 0)}
-                </div>
+                <div className="text-[7px] sm:text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Volumetric growth</div>
+                <div className="text-2xl sm:text-3xl font-black text-white tabular-nums">{(analytics.hours * 1.2).toFixed(0)}</div>
              </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
          {[
-           { label: 'Work Focus', val: '42%', icon: <Icons.Calendar />, color: 'text-sky-400' },
-           { label: 'Health Index', val: '88%', icon: <Icons.Sun />, color: 'text-emerald-400' },
-           { label: 'Social Volume', val: '12%', icon: <Icons.User />, color: 'text-amber-400' },
-           { label: 'Rest Reserves', val: '75%', icon: <Icons.Moon />, color: 'text-indigo-400' }
+           { label: 'Deep focus', val: '52%', icon: <Icons.Calendar />, color: 'text-sky-400' },
+           { label: 'Wellness', val: '82%', icon: <Icons.Sun />, color: 'text-emerald-400' },
+           { label: 'Networking', val: '14%', icon: <Icons.User />, color: 'text-amber-400' },
+           { label: 'Recovery', val: '78%', icon: <Icons.Moon />, color: 'text-indigo-400' }
          ].map((stat, i) => (
-           <div key={i} className="bg-black/40 border border-white/5 p-6 rounded-[2rem] flex items-center justify-between hover:bg-black/60 transition-all">
-              <div className="flex items-center gap-4">
-                 <div className={`p-3 bg-white/5 rounded-xl ${stat.color}`}>{stat.icon}</div>
-                 <div>
-                    <div className="text-[9px] font-black text-slate-600 uppercase tracking-widest">{stat.label}</div>
-                    <div className="text-xl font-black text-white">{stat.val}</div>
-                 </div>
+           <div key={i} className="bg-black/40 border border-white/5 p-5 rounded-[1.5rem] sm:rounded-[2rem] flex items-center gap-3 sm:gap-4">
+              <div className={`p-2.5 bg-white/5 rounded-xl ${stat.color} flex-shrink-0 scale-90 sm:scale-100`}>{stat.icon}</div>
+              <div className="min-w-0">
+                 <div className="text-[7px] sm:text-[8px] font-black text-slate-600 uppercase tracking-widest truncate">{stat.label}</div>
+                 <div className="text-sm sm:text-lg font-black text-white">{stat.val}</div>
               </div>
            </div>
          ))}
@@ -226,7 +199,7 @@ const DailyStatsView: React.FC<DailyStatsViewProps> = ({ allRoutines, activeDate
       <div className="mt-12 flex justify-center">
         <button 
           onClick={onBack}
-          className="px-10 py-4 bg-white/5 text-slate-500 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.4em] transition-all border border-white/5"
+          className="px-10 py-4 bg-white/5 text-slate-500 hover:text-white rounded-2xl text-[9px] font-black uppercase tracking-[0.4em] transition-all border border-white/5"
         >
           Return to Hub
         </button>

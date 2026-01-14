@@ -64,7 +64,7 @@ const Timeline: React.FC<TimelineProps> = ({
 
   const handleTimeClick = (e: React.MouseEvent, time: number) => {
     if (isReadOnly) return;
-    e.stopPropagation(); // Prevent deselecting when clicking a valid point
+    e.stopPropagation();
     if (selectionStart === null) {
       setSelectionStart(time);
     } else {
@@ -116,12 +116,12 @@ const Timeline: React.FC<TimelineProps> = ({
     const cycleTasks = tasks.filter(t => t.startTime >= baseHour && t.startTime < baseHour + 12);
 
     return (
-      <div className="flex-shrink-0 w-full snap-start flex flex-col items-center justify-center py-0 px-4">
-        <h3 className="text-[9px] font-black text-slate-500 uppercase tracking-[0.5em] mb-2 bg-white/5 px-6 py-1.5 rounded-full border border-white/5 backdrop-blur-3xl">
+      <div className="flex-shrink-0 w-full snap-start flex flex-col items-center justify-center py-2 sm:py-0 px-2 sm:px-4">
+        <h3 className="text-[7px] sm:text-[9px] font-black text-slate-500 uppercase tracking-[0.4em] mb-2 sm:mb-2 bg-white/5 px-4 sm:px-6 py-1 sm:py-1.5 rounded-full border border-white/5 backdrop-blur-3xl">
           {label} Cycle
         </h3>
         
-        <div className="relative w-full aspect-square max-w-[420px]">
+        <div className="relative w-full aspect-square max-w-[340px] sm:max-w-[420px]">
           <svg 
             viewBox={`0 0 ${SIZE} ${SIZE}`}
             className="w-full h-full cursor-crosshair overflow-visible"
@@ -162,7 +162,7 @@ const Timeline: React.FC<TimelineProps> = ({
                     onClick={(e) => handleTimeClick(e, actualTime)}
                     onMouseEnter={() => setHoverTime(actualTime)}
                     onMouseLeave={() => setHoverTime(null)}
-                    className={`text-[20px] font-black tabular-nums tracking-tighter cursor-pointer transition-all duration-200 select-none ${isHourSelected ? 'fill-sky-400 scale-125' : isHourHovered ? 'fill-sky-300 scale-110' : 'fill-slate-600 hover:fill-slate-300'}`}
+                    className={`text-[16px] sm:text-[20px] font-black tabular-nums tracking-tighter cursor-pointer transition-all duration-200 select-none ${isHourSelected ? 'fill-sky-400 scale-125' : isHourHovered ? 'fill-sky-300 scale-110' : 'fill-slate-600 hover:fill-slate-300'}`}
                   >
                     {hourLabel}
                   </text>
@@ -209,13 +209,13 @@ const Timeline: React.FC<TimelineProps> = ({
                     className={`cursor-pointer transition-all ${isActivelyFocusing ? 'animate-pulse stroke-white/80' : 'active:stroke-white'}`} 
                     onClick={(e) => { e.stopPropagation(); onEditTask(task); }} 
                   />
-                  {duration >= 0.25 && (
-                    <text dy="6" className="fill-white pointer-events-none select-none text-[13px] font-black uppercase tracking-widest">
+                  {duration >= 0.5 && (
+                    <text dy="6" className="fill-white pointer-events-none select-none text-[10px] sm:text-[13px] font-black uppercase tracking-widest">
                       <textPath 
                         href={`#path-${task.id}-${baseHour}`} 
                         startOffset="50%" 
                         textAnchor="middle"
-                        style={{ paintOrder: 'stroke', stroke: 'rgba(0,0,0,0.95)', strokeWidth: '5px', strokeLinejoin: 'round' }}
+                        style={{ paintOrder: 'stroke', stroke: 'rgba(0,0,0,0.95)', strokeWidth: '4px', strokeLinejoin: 'round' }}
                       >
                         {task.title}
                       </textPath>
@@ -244,30 +244,30 @@ const Timeline: React.FC<TimelineProps> = ({
           </svg>
 
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-             <div className={`text-center bg-black/90 backdrop-blur-3xl p-4 rounded-full w-28 h-28 flex flex-col items-center justify-center border border-white/5 shadow-4xl transition-all duration-500 ${currentTask ? 'scale-110 border-sky-500/20 shadow-sky-500/10' : ''}`}>
+             <div className={`text-center bg-black/90 backdrop-blur-3xl p-2 sm:p-4 rounded-full w-20 h-20 sm:w-28 sm:h-28 flex flex-col items-center justify-center border border-white/5 shadow-4xl transition-all duration-500 ${currentTask ? 'scale-110 border-sky-500/20 shadow-sky-500/10' : ''}`}>
                 {currentTask && isCurrentCycle ? (
                   <div className="flex flex-col items-center animate-in zoom-in-95">
-                    <div className="text-[7px] font-black text-sky-400 uppercase tracking-[0.4em] mb-1 animate-pulse">Live</div>
-                    <div className="text-xl font-black text-white tabular-nums tracking-tighter leading-none">
+                    <div className="text-[6px] sm:text-[7px] font-black text-sky-400 uppercase tracking-[0.4em] mb-0.5 sm:mb-1 animate-pulse">Live</div>
+                    <div className="text-sm sm:text-xl font-black text-white tabular-nums tracking-tighter leading-none">
                        {timeLeft}
                     </div>
-                    <div className="text-[7px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-1.5 truncate max-w-[80px]">
+                    <div className="text-[6px] sm:text-[7px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-1 sm:mt-1.5 truncate max-w-[60px] sm:max-w-[80px]">
                       {currentTask.title}
                     </div>
                   </div>
                 ) : selectionStart !== null && hoverTime !== null ? (
                   <div className="flex flex-col items-center">
-                    <div className="text-[7px] font-black text-sky-400 uppercase tracking-[0.5em] mb-1 animate-pulse">Range</div>
-                    <div className="text-xl font-black text-white tabular-nums tracking-tighter">
+                    <div className="text-[6px] sm:text-[7px] font-black text-sky-400 uppercase tracking-[0.5em] mb-0.5 sm:mb-1 animate-pulse">Range</div>
+                    <div className="text-sm sm:text-xl font-black text-white tabular-nums tracking-tighter">
                       {calculateDuration(selectionStart, hoverTime)}
                     </div>
                   </div>
                 ) : (
                   <>
-                    <div className="text-[7px] font-black text-slate-500 uppercase tracking-[0.4em]">
+                    <div className="text-[6px] sm:text-[7px] font-black text-slate-500 uppercase tracking-[0.4em]">
                        {hoverTime !== null ? 'Seek' : 'Real-time'}
                     </div>
-                    <div className="text-2xl font-black text-white tabular-nums tracking-tighter mt-0.5 leading-none">
+                    <div className="text-base sm:text-2xl font-black text-white tabular-nums tracking-tighter mt-0.5 leading-none">
                        {hoverTime !== null ? formatTimeStr(hoverTime) : formatTimeStr(now)}
                     </div>
                   </>
@@ -293,12 +293,12 @@ const Timeline: React.FC<TimelineProps> = ({
       </div>
 
       <div 
-        className="absolute bottom-1 left-1/2 -translate-x-1/2 flex items-center bg-black/95 backdrop-blur-3xl p-1 rounded-full shadow-4xl border border-white/10 z-[60]"
+        className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center bg-black/95 backdrop-blur-3xl p-0.5 sm:p-1 rounded-full shadow-4xl border border-white/10 z-[60]"
         onClick={(e) => e.stopPropagation()}
       >
-        <button onClick={() => scrollToSection(0)} className="px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-[0.4em] text-slate-500 hover:text-sky-400 hover:bg-white/5 transition-all">Morning</button>
-        <div className="w-px h-3 bg-white/10 mx-1" />
-        <button onClick={() => scrollToSection(1)} className="px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-[0.4em] text-slate-500 hover:text-sky-400 hover:bg-white/5 transition-all">Evening</button>
+        <button onClick={() => scrollToSection(0)} className="px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-[7px] sm:text-[8px] font-black uppercase tracking-[0.3em] sm:tracking-[0.4em] text-slate-500 hover:text-sky-400 hover:bg-white/5 transition-all">AM</button>
+        <div className="w-px h-2 sm:h-3 bg-white/10 mx-0.5 sm:mx-1" />
+        <button onClick={() => scrollToSection(1)} className="px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-[7px] sm:text-[8px] font-black uppercase tracking-[0.3em] sm:tracking-[0.4em] text-slate-500 hover:text-sky-400 hover:bg-white/5 transition-all">PM</button>
       </div>
     </div>
   );

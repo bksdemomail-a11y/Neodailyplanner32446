@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { storageService } from '../services/storageService';
 import { Icons } from '../constants';
 
@@ -13,6 +13,7 @@ const SyncView: React.FC<SyncViewProps> = ({ onSyncRefresh, userId }) => {
   const [claimInput, setClaimInput] = useState('');
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'none', msg: string }>({ type: 'none', msg: '' });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const stats = useMemo(() => {
     const routines = Object.keys(storageService.getAllRoutines()).length;
@@ -24,7 +25,7 @@ const SyncView: React.FC<SyncViewProps> = ({ onSyncRefresh, userId }) => {
     const key = storageService.generateSyncKey();
     setSyncKey(key);
     navigator.clipboard.writeText(key);
-    setStatus({ type: 'success', msg: 'Sync Key Copied to Clipboard!' });
+    setStatus({ type: 'success', msg: 'Sync Key Copied!' });
     setTimeout(() => setStatus({ type: 'none', msg: '' }), 3000);
   };
 
@@ -33,87 +34,115 @@ const SyncView: React.FC<SyncViewProps> = ({ onSyncRefresh, userId }) => {
       setStatus({ type: 'error', msg: 'Please paste a valid Sync Key.' });
       return;
     }
-
     const success = storageService.applySyncKey(claimInput);
     if (success) {
-      setStatus({ type: 'success', msg: 'Temporal Data Synchronized!' });
+      setStatus({ type: 'success', msg: 'Data Synchronized!' });
       setClaimInput('');
-      // Trigger a state-only refresh in App.tsx (No browser reload)
-      setTimeout(() => {
-        onSyncRefresh();
-        setStatus({ type: 'none', msg: '' });
-      }, 1500);
+      setTimeout(() => { onSyncRefresh(); setStatus({ type: 'none', msg: '' }); }, 1500);
     } else {
-      setStatus({ type: 'error', msg: 'Invalid or Corrupt Sync Key.' });
+      setStatus({ type: 'error', msg: 'Invalid Sync Key.' });
     }
   };
 
+  const handleExportFile = () => {
+    const data = {
+      routines: storageService.getAllRoutines(),
+      targets: storageService.getTargets(),
+      templates: storageService.getTemplates(),
+      export_date: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `chronos_vault_backup_${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setStatus({ type: 'success', msg: 'Local Vault Exported!' });
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        const token = btoa(encodeURIComponent(JSON.stringify(json)));
+        const success = storageService.applySyncKey(token);
+        if (success) {
+          setStatus({ type: 'success', msg: 'Backup Restored!' });
+          setTimeout(() => onSyncRefresh(), 1500);
+        } else {
+          setStatus({ type: 'error', msg: 'Corrupt Backup File.' });
+        }
+      } catch (err) {
+        setStatus({ type: 'error', msg: 'Invalid JSON File.' });
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
-    <div className="max-w-5xl mx-auto py-12 px-6 min-h-screen pb-32 animate-in fade-in duration-700">
+    <div className="max-w-5xl mx-auto py-12 px-6 min-h-screen pb-40 animate-in fade-in duration-700">
       <div className="text-center mb-16">
         <div className="w-20 h-20 bg-sky-600/20 text-sky-400 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 border border-sky-500/20 shadow-4xl">
           <Icons.Cloud />
         </div>
-        <h2 className="text-5xl font-black text-white tracking-tighter">Temporal Portal</h2>
-        <p className="text-slate-400 mt-4 text-xs font-black uppercase tracking-[0.3em]">No files. No reloads. Pure Sync.</p>
+        <h2 className="text-5xl font-black text-white tracking-tighter">Terminal Hub</h2>
+        <p className="text-slate-400 mt-4 text-xs font-black uppercase tracking-[0.3em]">Backup, Sync, and Disaster Recovery</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-        <div className="bg-white/5 border border-white/5 p-8 rounded-[2.5rem] text-center">
-           <div className="text-3xl font-black text-white">{stats.routines}</div>
-           <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-2">Days Saved</div>
+      {/* Local Backup Section */}
+      <div className="mb-12 bg-emerald-600/10 border border-emerald-500/20 p-10 rounded-[3.5rem] flex flex-col md:flex-row items-center justify-between gap-8">
+        <div>
+          <h3 className="text-2xl font-black text-white">Local Vault Backup</h3>
+          <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest mt-2">Download your entire life structure as a secure JSON file.</p>
         </div>
-        <div className="bg-white/5 border border-white/5 p-8 rounded-[2.5rem] text-center">
-           <div className="text-3xl font-black text-white">{stats.targets}</div>
-           <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-2">Active Goals</div>
-        </div>
-        <div className="bg-sky-500/10 border border-sky-500/20 p-8 rounded-[2.5rem] text-center">
-           <div className="text-xs font-black text-sky-400 uppercase tracking-widest">Protocol</div>
-           <div className="text-[10px] font-bold text-sky-500/60 uppercase tracking-widest mt-2">Token-Based Sync</div>
+        <div className="flex gap-4 w-full md:w-auto">
+          <button onClick={handleExportFile} className="flex-1 md:flex-none px-8 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl flex items-center gap-2">
+            <Icons.Download /> Export
+          </button>
+          <input type="file" ref={fileInputRef} onChange={handleImportFile} className="hidden" accept=".json" />
+          <button onClick={() => fileInputRef.current?.click()} className="flex-1 md:flex-none px-8 py-4 bg-white/5 text-white border border-white/10 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-white/10 transition-all flex items-center gap-2">
+            <Icons.Upload /> Import
+          </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Generate Key */}
+        {/* Token Sync - Export */}
         <div className="bg-slate-900/40 backdrop-blur-3xl p-10 rounded-[3.5rem] border border-white/5 hover:border-sky-500/30 transition-all group">
           <div className="flex items-center gap-4 mb-8">
             <div className="p-4 bg-sky-500/10 text-sky-400 rounded-2xl group-hover:bg-sky-500 group-hover:text-white transition-all"><Icons.Copy /></div>
-            <h3 className="text-2xl font-black text-white">Export Life</h3>
+            <h3 className="text-2xl font-black text-white">Cloud Token</h3>
           </div>
-          <p className="text-slate-500 text-[11px] font-bold uppercase tracking-widest leading-relaxed mb-8">Generate a Sync Key containing your entire schedule. Paste it on another device to continue.</p>
-          
+          <p className="text-slate-500 text-[11px] font-bold uppercase tracking-widest mb-8">Generate a one-time sync token for instant cross-device migration.</p>
           {syncKey ? (
-            <div className="space-y-4 animate-in slide-in-from-top-4">
-              <textarea readOnly value={syncKey} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-[10px] font-mono text-sky-400/70 h-24 overflow-y-auto no-scrollbar resize-none" />
-              <button onClick={handleGenerateKey} className="w-full py-5 bg-sky-600 text-white rounded-[1.5rem] font-black uppercase text-[11px] tracking-[0.2em] shadow-xl">Copy New Key</button>
-            </div>
-          ) : (
-            <button onClick={handleGenerateKey} className="w-full py-5 bg-white/5 hover:bg-white/10 text-white border border-white/5 rounded-[1.5rem] font-black uppercase text-[11px] tracking-[0.2em] transition-all">Generate Sync Key</button>
-          )}
+            <textarea readOnly value={syncKey} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-[10px] font-mono text-sky-400/70 h-24 mb-4 resize-none" />
+          ) : null}
+          <button onClick={handleGenerateKey} className="w-full py-5 bg-sky-600 text-white rounded-[1.5rem] font-black uppercase text-[11px] tracking-[0.2em] shadow-xl">Generate Token</button>
         </div>
 
-        {/* Claim Key */}
+        {/* Token Sync - Import */}
         <div className="bg-slate-900/40 backdrop-blur-3xl p-10 rounded-[3.5rem] border border-white/5 hover:border-emerald-500/30 transition-all group">
           <div className="flex items-center gap-4 mb-8">
             <div className="p-4 bg-emerald-500/10 text-emerald-400 rounded-2xl group-hover:bg-emerald-500 group-hover:text-white transition-all"><Icons.Upload /></div>
-            <h3 className="text-2xl font-black text-white">Import Life</h3>
+            <h3 className="text-2xl font-black text-white">Apply Token</h3>
           </div>
-          <p className="text-slate-500 text-[11px] font-bold uppercase tracking-widest leading-relaxed mb-8">Paste a Sync Key from another device here to restore your routines.</p>
-          <div className="space-y-4">
-            <textarea 
-              value={claimInput} 
-              onChange={(e) => setClaimInput(e.target.value)} 
-              placeholder="Paste Sync Key here..." 
-              className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-[10px] font-mono text-emerald-400/70 h-24 focus:border-emerald-500 outline-none transition-all" 
-            />
-            <button onClick={handleApplyKey} className="w-full py-5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-[1.5rem] font-black uppercase text-[11px] tracking-[0.2em] shadow-xl transition-all">Claim Identity</button>
-          </div>
+          <textarea 
+            value={claimInput} 
+            onChange={(e) => setClaimInput(e.target.value)} 
+            placeholder="Paste Token Here..." 
+            className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-[10px] font-mono text-emerald-400/70 h-32 focus:border-emerald-500 outline-none transition-all mb-4" 
+          />
+          <button onClick={handleApplyKey} className="w-full py-5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-[1.5rem] font-black uppercase text-[11px] tracking-[0.2em] shadow-xl transition-all">Restore Identity</button>
         </div>
       </div>
 
       <div className="mt-20 pt-12 border-t border-white/5 flex flex-col items-center">
         {!showDeleteConfirm ? (
-          <button onClick={() => setShowDeleteConfirm(true)} className="text-[10px] font-black text-rose-500/40 hover:text-rose-500 uppercase tracking-widest">Destroy Local Vault</button>
+          <button onClick={() => setShowDeleteConfirm(true)} className="text-[10px] font-black text-rose-500/40 hover:text-rose-500 uppercase tracking-widest">Self-Destruct Local Vault</button>
         ) : (
           <div className="flex flex-col items-center gap-4 animate-in zoom-in-95">
             <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest">This wipes ALL local data. Proceed?</p>
