@@ -71,7 +71,8 @@ const Timeline: React.FC<TimelineProps> = ({
     } else {
       const s = Math.min(selectionStart, time);
       const f = Math.max(selectionStart, time);
-      onAddTask(s, f === s ? s + 0.25 : f);
+      // Changed: Clicking the same time twice now creates a 1-hour block (e.g., 11:00 to 12:00)
+      onAddTask(s, f === s ? s + 1 : f);
     }
   };
 
@@ -97,8 +98,10 @@ const Timeline: React.FC<TimelineProps> = ({
 
   const calculateDuration = (t1: number, t2: number) => {
     const diff = Math.abs(t2 - t1);
-    const hours = Math.floor(diff);
-    const mins = Math.round((diff % 1) * 60);
+    // If double-clicking the same point, display the default 1-hour duration
+    const finalDiff = diff === 0 ? 1 : diff;
+    const hours = Math.floor(finalDiff);
+    const mins = Math.round((finalDiff % 1) * 60);
     if (hours === 0) return `${mins}m`;
     return `${hours}h ${mins}m`;
   };

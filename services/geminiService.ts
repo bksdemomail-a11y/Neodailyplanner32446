@@ -55,10 +55,18 @@ export const geminiService = {
           tools: [{ googleSearch: {} }]
         }
       });
-      return response.text;
+      
+      // Mandatory: Return both text and grounding chunks to comply with Google Search grounding requirements
+      return {
+        text: response.text || '',
+        groundingChunks: response.candidates?.[0]?.groundingMetadata?.groundingChunks || []
+      };
     } catch (error) {
       console.error("Weather AI failed", error);
-      return "আবহাওয়ার তথ্য পাওয়া যাচ্ছে না। (Weather data currently unavailable)";
+      return {
+        text: "আবহাওয়ার তথ্য পাওয়া যাচ্ছে না। (Weather data currently unavailable)",
+        groundingChunks: []
+      };
     }
   }
 };

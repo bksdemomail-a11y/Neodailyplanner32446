@@ -4,7 +4,7 @@ import { geminiService } from '../services/geminiService';
 import { Icons } from '../constants';
 
 const WeatherView: React.FC = () => {
-  const [weatherData, setWeatherData] = useState<string | null>(null);
+  const [weatherData, setWeatherData] = useState<{ text: string, groundingChunks?: any[] } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,11 +20,11 @@ const WeatherView: React.FC = () => {
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
-          const comment = await geminiService.getWeatherAndComment(
+          const insight = await geminiService.getWeatherAndComment(
             pos.coords.latitude,
             pos.coords.longitude
           );
-          setWeatherData(comment);
+          setWeatherData(insight);
         } catch (err) {
           setError("Failed to fetch weather insights.");
         } finally {
@@ -77,20 +77,46 @@ const WeatherView: React.FC = () => {
       {weatherData && (
         <div className="animate-in fade-in slide-in-from-bottom-6 duration-700">
           <div className="bg-slate-900/40 backdrop-blur-3xl p-8 rounded-[2.5rem] border border-white/5 shadow-4xl mb-10 overflow-hidden">
-            <div className="flex items-center gap-4 mb-8">
-               <div className="p-3 bg-amber-500/20 text-amber-400 rounded-2xl border border-amber-500/10"><Icons.Sun /></div>
-               <h3 className="text-xl font-black text-white tracking-tighter">আগামী কয়েক দিনের আবহাওয়ার পূর্বাভাস</h3>
+            <div className="flex items-center justify-between mb-8">
+               <div className="flex items-center gap-4">
+                 <div className="p-3 bg-amber-500/20 text-amber-400 rounded-2xl border border-amber-500/10"><Icons.Sun /></div>
+                 <h3 className="text-xl font-black text-white tracking-tighter">আগামী কয়েক দিনের আবহাওয়ার পূর্বাভাস</h3>
+               </div>
             </div>
             
             <div className="prose prose-invert max-w-none text-slate-200">
                <div className="whitespace-pre-wrap font-bold text-lg leading-relaxed space-y-4">
-                 {weatherData.split('\n').map((line, i) => (
-                   <div key={i} className="p-4 bg-white/5 rounded-xl border border-white/5">
-                     {line}
-                   </div>
+                 {weatherData.text.split('\n').map((line, i) => (
+                   line.trim() && (
+                    <div key={i} className="p-4 bg-white/5 rounded-xl border border-white/5">
+                      {line}
+                    </div>
+                   )
                  ))}
                </div>
             </div>
+
+            {/* Mandatory: Display grounding source URLs extracted from groundingChunks when Google Search tool is used */}
+            {weatherData.groundingChunks && weatherData.groundingChunks.length > 0 && (
+              <div className="mt-8 pt-8 border-t border-white/5">
+                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Verification Sources</h4>
+                <div className="flex flex-wrap gap-2">
+                  {weatherData.groundingChunks.map((chunk: any, i: number) => (
+                    chunk.web && (
+                      <a 
+                        key={i} 
+                        href={chunk.web.uri} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/5 rounded-full text-[9px] font-bold text-sky-400 transition-all flex items-center gap-2"
+                      >
+                        <Icons.Calendar /> {chunk.web.title || 'Source'}
+                      </a>
+                    )
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
