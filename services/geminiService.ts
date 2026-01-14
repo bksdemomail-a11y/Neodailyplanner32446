@@ -5,6 +5,7 @@ import { DailyRoutine } from "../types";
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const geminiService = {
+  // Use gemini-3-pro-preview for complex reasoning tasks like productivity analysis
   analyzeRoutine: async (routine: DailyRoutine) => {
     const taskSummary = routine.tasks.map(t => `${t.startTime}:00 - ${t.endTime}:00: ${t.title}`).join('\n');
     const prompt = `
@@ -24,7 +25,7 @@ export const geminiService = {
 
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3-pro-preview',
         contents: prompt,
       });
       return response.text;
@@ -34,6 +35,7 @@ export const geminiService = {
     }
   },
 
+  // Use gemini-3-flash-preview for general weather summary tasks with search grounding
   getWeatherAndComment: async (lat: number, lon: number) => {
     const prompt = `
       What is the current 5-day weather forecast for latitude ${lat}, longitude ${lon}? 

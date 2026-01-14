@@ -9,12 +9,10 @@ import SyncView from './components/SyncView';
 import AuthView from './components/AuthView';
 import ReflectionView from './components/ReflectionView';
 import DailyStatsView from './components/DailyStatsView';
-import { storageService } from './services/storageService';
+import { storageService, cloudService } from './services/storageService';
 import { geminiService } from './services/geminiService';
 import { DailyRoutine, TimeBlock, ViewMode, Target, COLORS, User } from './types';
 import { Icons } from './constants';
-
-const MOTIVATION_WORDS = ["Focus", "Discipline", "Consistency", "Action", "Routine", "Success"];
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -25,10 +23,11 @@ const App: React.FC = () => {
   const [selectionStart, setSelectionStart] = useState<number | null>(null);
   const [notification, setNotification] = useState<{msg: string, type: 'info' | 'success'} | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
   
   const [allRoutines, setAllRoutines] = useState<Record<string, DailyRoutine>>({});
   const [targets, setTargets] = useState<Target[]>([]);
+
+  const isCloudConnected = cloudService.isAvailable();
 
   useEffect(() => {
     document.documentElement.classList.add('dark');
@@ -52,12 +51,9 @@ const App: React.FC = () => {
   const sortedTasks = useMemo(() => [...routine.tasks].sort((a, b) => a.startTime - b.startTime), [routine.tasks]);
 
   const triggerCloudSync = async () => {
-    if (currentUser) {
+    if (currentUser && isCloudConnected) {
       setIsSyncing(true);
-      setTimeout(() => {
-        setIsSyncing(false);
-        setLastSavedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-      }, 800);
+      setTimeout(() => setIsSyncing(false), 800);
     }
   };
 
@@ -66,15 +62,15 @@ const App: React.FC = () => {
     newTasks.sort((a, b) => a.startTime - b.startTime);
     const updatedRoutine = { ...routine, tasks: newTasks };
     
-    storageService.saveRoutine(updatedRoutine, currentUser?.id);
+    storageService.saveRoutine(updatedRoutine, currentUser || undefined);
     setAllRoutines({ ...allRoutines, [dateKey]: updatedRoutine });
-    setNotification({ msg: 'Saved & Synced', type: 'success' });
+    setNotification({ msg: isCloudConnected ? 'Cloud Updated' : 'Saved Locally', type: 'success' });
     triggerCloudSync();
   };
 
   const handleDeleteTask = (id: string) => {
     const updatedRoutine = { ...routine, tasks: routine.tasks.filter(t => t.id !== id) };
-    storageService.saveRoutine(updatedRoutine, currentUser?.id);
+    storageService.saveRoutine(updatedRoutine, currentUser || undefined);
     setAllRoutines({ ...allRoutines, [dateKey]: updatedRoutine });
     setNotification({ msg: 'Task Removed', type: 'info' });
     setIsModalOpen(false);
@@ -82,21 +78,21 @@ const App: React.FC = () => {
   };
 
   const handleUpdateRoutine = (updatedRoutine: DailyRoutine) => {
-    storageService.saveRoutine(updatedRoutine, currentUser?.id);
+    storageService.saveRoutine(updatedRoutine, currentUser || undefined);
     setAllRoutines({ ...allRoutines, [dateKey]: updatedRoutine });
     triggerCloudSync();
   };
 
   const handleSetTaskStatus = (id: string, completed: boolean) => {
     const updatedRoutine = { ...routine, tasks: routine.tasks.map(t => t.id === id ? { ...t, completed } : t) };
-    storageService.saveRoutine(updatedRoutine, currentUser?.id);
+    storageService.saveRoutine(updatedRoutine, currentUser || undefined);
     setAllRoutines({ ...allRoutines, [dateKey]: updatedRoutine });
     triggerCloudSync();
   };
 
   const updateTargets = (newTargets: Target[]) => {
     setTargets(newTargets);
-    storageService.saveTargets(newTargets, currentUser?.id);
+    storageService.saveTargets(newTargets, currentUser || undefined);
     triggerCloudSync();
   };
 
@@ -114,10 +110,10 @@ const App: React.FC = () => {
               <h1 className="text-[11px] font-black tracking-[0.4em] hidden sm:block uppercase">Chronos</h1>
             </button>
             
-            <div className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-all ${currentUser ? 'bg-sky-500/10 border-sky-500/30 text-sky-400' : 'bg-white/5 border-white/10 text-slate-500'}`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-sky-400 animate-ping' : 'bg-sky-500 shadow-[0_0_8px_#0ea5e9]'}`} />
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-all ${isCloudConnected ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
+              <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? (isCloudConnected ? 'bg-emerald-400 animate-ping' : 'bg-amber-400 animate-ping') : (isCloudConnected ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-amber-500 shadow-[0_0_8px_#f59e0b]')}`} />
               <span className="text-[8px] font-black uppercase tracking-widest">
-                {isSyncing ? 'Cloud Syncing...' : currentUser ? 'Cloud Connected' : 'Local Only'}
+                {isSyncing ? 'Syncing...' : isCloudConnected ? 'Cloud Active' : 'Local Only'}
               </span>
             </div>
           </div>
@@ -201,7 +197,7 @@ const App: React.FC = () => {
 
           {viewMode === ViewMode.HISTORY && <HistoryView allRoutines={allRoutines} onSelectDate={(d) => { setCurrentDate(d); setViewMode(ViewMode.PLANNER); }} onAddTask={()=>{}} onEditTask={()=>{}} />}
           {viewMode === ViewMode.TARGETS && <TargetsView targets={targets} onUpdateTargets={updateTargets} />}
-          {viewMode === ViewMode.SYNC && <SyncView onSyncComplete={() => setViewMode(ViewMode.PLANNER)} />}
+          {viewMode === ViewMode.SYNC && <SyncView userId={currentUser?.id} onSyncComplete={() => setViewMode(ViewMode.PLANNER)} />}
           {viewMode === ViewMode.DAILY_STATS && <DailyStatsView routine={routine} onBack={() => setViewMode(ViewMode.PLANNER)} />}
           {viewMode === ViewMode.REFLECTION && <ReflectionView routine={routine} onUpdate={handleUpdateRoutine} onNotification={(m, t) => setNotification({msg:m, type:t})} onBack={() => setViewMode(ViewMode.PLANNER)} />}
         </div>

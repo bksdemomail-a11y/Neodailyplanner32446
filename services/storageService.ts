@@ -1,4 +1,5 @@
 
+import { createClient } from '@supabase/supabase-js';
 import { DailyRoutine, Target, Template, User } from '../types';
 
 const GLOBAL_ROUTINE_KEY = 'chronos_planner_data_global';
@@ -6,27 +7,49 @@ const GLOBAL_TARGETS_KEY = 'chronos_targets_data_global';
 const GLOBAL_TEMPLATES_KEY = 'chronos_templates_data_global';
 const USERS_KEY = 'chronos_users_data_global';
 
-// Persistent file handle for "Live Sync" (Local Workspace)
-let fileHandle: any | null = null;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY;
 
-/**
- * Cloud storage bridge. 
- * In a production Firebase environment, these functions would 
- * call `setDoc` or `addDoc` in Firestore.
- */
+const supabase = (SUPABASE_URL && SUPABASE_KEY) 
+  ? createClient(SUPABASE_URL, SUPABASE_KEY) 
+  : null;
+
 export const cloudService = {
-  saveToCloud: async (userId: string, data: any) => {
-    console.log(`[Cloud] Syncing data for user: ${userId}...`);
-    // Simulated Firebase Logic:
-    // await db.collection('users').doc(userId).set(data);
-    return true;
+  isAvailable: () => !!supabase,
+
+  saveToCloud: async (userId: string, username: string, payload: any) => {
+    if (!supabase) return false;
+    try {
+      const { error } = await supabase
+        .from('chronos_sync')
+        .upsert({ 
+          user_id: userId, 
+          username: username,
+          data: payload,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+      
+      return !error;
+    } catch (e) {
+      console.error("Supabase Save Error:", e);
+      return false;
+    }
   },
-  loadFromCloud: async (userId: string) => {
-    console.log(`[Cloud] Fetching data for user: ${userId}...`);
-    // Simulated Firebase Logic:
-    // const snapshot = await db.collection('users').doc(userId).get();
-    // return snapshot.data();
-    return null;
+
+  loadFromCloud: async (username: string) => {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase
+        .from('chronos_sync')
+        .select('data')
+        .eq('username', username)
+        .single();
+      
+      if (error || !data) return null;
+      return data.data;
+    } catch (e) {
+      return null;
+    }
   }
 };
 
@@ -38,31 +61,15 @@ export const storageService = {
     return false;
   },
 
-  setWorkspaceHandle: async (handle: any) => {
-    fileHandle = handle;
-    try {
-      const file = await handle.getFile();
-      const content = await file.text();
-      if (content && content.trim().startsWith('{')) {
-        storageService.importAllData(btoa(content));
-      }
-      return true;
-    } catch (e) {
-      return true; 
-    }
-  },
+  getIsSynced: () => !!supabase,
 
-  getIsSynced: () => !!fileHandle,
-
-  // Routine Management
-  saveRoutine: async (routine: DailyRoutine, userId?: string) => {
+  saveRoutine: async (routine: DailyRoutine, user?: User) => {
     const allData = storageService.getAllRoutines();
     allData[routine.date] = routine;
     localStorage.setItem(GLOBAL_ROUTINE_KEY, JSON.stringify(allData));
     
-    // Automatic Cloud Sync if logged in
-    if (userId) {
-      await cloudService.saveToCloud(userId, storageService.getRawData());
+    if (user && supabase) {
+      await cloudService.saveToCloud(user.id, user.username, storageService.getRawData(user.id));
     }
   },
 
@@ -76,11 +83,10 @@ export const storageService = {
     return stored ? JSON.parse(stored) : {};
   },
 
-  // Target Management
-  saveTargets: async (targets: Target[], userId?: string) => {
+  saveTargets: async (targets: Target[], user?: User) => {
     localStorage.setItem(GLOBAL_TARGETS_KEY, JSON.stringify(targets));
-    if (userId) {
-      await cloudService.saveToCloud(userId, storageService.getRawData());
+    if (user && supabase) {
+      await cloudService.saveToCloud(user.id, user.username, storageService.getRawData(user.id));
     }
   },
 
@@ -89,69 +95,81 @@ export const storageService = {
     return stored ? JSON.parse(stored) : [];
   },
 
-  // Template Management
-  // Fix: Added getTemplates to storageService as requested by TemplatesView
   getTemplates: (): Template[] => {
     const stored = localStorage.getItem(GLOBAL_TEMPLATES_KEY);
     return stored ? JSON.parse(stored) : [];
   },
 
-  // Fix: Added saveTemplate to handle library additions
-  saveTemplate: (template: Template) => {
-    const templates = storageService.getTemplates();
-    const existingIndex = templates.findIndex(t => t.id === template.id);
-    if (existingIndex >= 0) {
-      templates[existingIndex] = template;
-    } else {
-      templates.push(template);
-    }
-    localStorage.setItem(GLOBAL_TEMPLATES_KEY, JSON.stringify(templates));
-  },
-
-  // Fix: Added deleteTemplate as requested by TemplatesView
+  // Added deleteTemplate to support template removal as required by TemplatesView
   deleteTemplate: (id: string) => {
-    const templates = storageService.getTemplates().filter(t => t.id !== id);
-    localStorage.setItem(GLOBAL_TEMPLATES_KEY, JSON.stringify(templates));
+    const templates = storageService.getTemplates();
+    const updated = templates.filter(t => t.id !== id);
+    localStorage.setItem(GLOBAL_TEMPLATES_KEY, JSON.stringify(updated));
   },
 
-  // Authentication Management (Local Simulator for Cloud)
   loginUser: async (username: string, password: string): Promise<User | null> => {
+    // 1. Try Cloud First if available
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('chronos_sync')
+        .select('*')
+        .eq('username', username)
+        .eq('password', password)
+        .single();
+
+      if (data && !error) {
+        // Sync cloud data to local storage on login
+        if (data.data) {
+          storageService.importAllData(btoa(JSON.stringify(data.data)));
+        }
+        return { id: data.user_id, username: data.username };
+      }
+    }
+
+    // 2. Fallback to Local Storage
     const stored = localStorage.getItem(USERS_KEY);
     const users = stored ? JSON.parse(stored) : [];
-    const user = users.find((u: any) => u.username === username && u.password === password);
+    const user = users.find((u: any) => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
     if (user) {
-      const { password: _, ...safeUser } = user;
-      // When logging in, pull their cloud data to local storage
-      const cloudData = await cloudService.loadFromCloud(user.id);
-      if (cloudData) {
-        storageService.importAllData(btoa(JSON.stringify(cloudData)));
-      }
-      return safeUser as User;
+      return { id: user.id, username: user.username };
     }
     return null;
   },
 
-  registerUser: (username: string, password: string): User | null => {
+  registerUser: async (username: string, password: string): Promise<User | null> => {
+    const userId = crypto.randomUUID();
+    
+    // 1. Register in Cloud if available
+    if (supabase) {
+      const { error } = await supabase
+        .from('chronos_sync')
+        .insert({ user_id: userId, username, password, data: {} });
+      
+      if (error) return null;
+    }
+
+    // 2. Always register locally as fallback
     const stored = localStorage.getItem(USERS_KEY);
     const users = stored ? JSON.parse(stored) : [];
-    if (users.some((u: any) => u.username === username)) return null;
-    const newUser = { id: crypto.randomUUID(), username, password };
-    users.push(newUser);
+    if (users.some((u: any) => u.username.toLowerCase() === username.toLowerCase())) return null;
+    
+    users.push({ id: userId, username, password });
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
-    const { password: _, ...safeUser } = newUser;
-    return safeUser as User;
+    
+    return { id: userId, username };
   },
 
-  // Global Sync Management
-  getRawData: () => ({
-    routines: storageService.getAllRoutines(),
-    targets: storageService.getTargets(),
-    templates: storageService.getTemplates(),
-    exportedAt: new Date().toISOString(),
-  }),
+  getRawData: (userId?: string) => {
+    return {
+      routines: storageService.getAllRoutines(),
+      targets: storageService.getTargets(),
+      templates: storageService.getTemplates(),
+      exportedAt: new Date().toISOString(),
+    };
+  },
 
-  exportAllData: (): string => {
-    return btoa(JSON.stringify(storageService.getRawData()));
+  exportAllData: (userId?: string): string => {
+    return btoa(JSON.stringify(storageService.getRawData(userId)));
   },
 
   importAllData: (syncToken: string): boolean => {
@@ -159,9 +177,11 @@ export const storageService = {
       const raw = atob(syncToken);
       if (!raw) return false;
       const decoded = JSON.parse(raw);
+      
       if (decoded.routines) localStorage.setItem(GLOBAL_ROUTINE_KEY, JSON.stringify(decoded.routines));
       if (decoded.targets) localStorage.setItem(GLOBAL_TARGETS_KEY, JSON.stringify(decoded.targets));
       if (decoded.templates) localStorage.setItem(GLOBAL_TEMPLATES_KEY, JSON.stringify(decoded.templates));
+      
       return true;
     } catch (e) {
       return false;
