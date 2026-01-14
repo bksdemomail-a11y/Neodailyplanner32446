@@ -24,19 +24,21 @@ const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
 
     try {
       if (isLogin) {
-        const user = await storageService.loginUser(username, password);
-        if (user) {
-          onAuthSuccess(user);
+        // Explicitly await and type the result to satisfy the compiler
+        const loggedUser: User | null = await storageService.loginUser(username, password);
+        if (loggedUser) {
+          onAuthSuccess(loggedUser);
         } else {
           setError('Invalid username or password on this device.');
         }
       } else {
-        const user = await storageService.registerUser(username, password);
-        if (user) {
-          // Sync state and notify app of successful login after registration
-          onAuthSuccess(user);
+        // Explicitly await and type the result for registration
+        const registeredUser: User | null = await storageService.registerUser(username, password);
+        if (registeredUser) {
+          // Pass the successfully resolved User object to the success callback
+          onAuthSuccess(registeredUser);
         } else {
-          setError('Username already exists');
+          setError('Username already exists or cloud registration failed.');
         }
       }
     } catch (err) {
