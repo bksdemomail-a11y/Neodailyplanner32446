@@ -51,13 +51,9 @@ const App: React.FC = () => {
   const routine = useMemo(() => allRoutines[dateKey] || { date: dateKey, tasks: [] }, [allRoutines, dateKey]);
   const sortedTasks = useMemo(() => [...routine.tasks].sort((a, b) => a.startTime - b.startTime), [routine.tasks]);
 
-  const isToday = dateKey === new Date().toISOString().split('T')[0];
-  const isPast = currentDate < new Date() && !isToday;
-
   const triggerCloudSync = async () => {
     if (currentUser) {
       setIsSyncing(true);
-      // Actual Firebase call would happen via storageService.saveRoutine
       setTimeout(() => {
         setIsSyncing(false);
         setLastSavedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
@@ -73,6 +69,21 @@ const App: React.FC = () => {
     storageService.saveRoutine(updatedRoutine, currentUser?.id);
     setAllRoutines({ ...allRoutines, [dateKey]: updatedRoutine });
     setNotification({ msg: 'Saved & Synced', type: 'success' });
+    triggerCloudSync();
+  };
+
+  const handleDeleteTask = (id: string) => {
+    const updatedRoutine = { ...routine, tasks: routine.tasks.filter(t => t.id !== id) };
+    storageService.saveRoutine(updatedRoutine, currentUser?.id);
+    setAllRoutines({ ...allRoutines, [dateKey]: updatedRoutine });
+    setNotification({ msg: 'Task Removed', type: 'info' });
+    setIsModalOpen(false);
+    triggerCloudSync();
+  };
+
+  const handleUpdateRoutine = (updatedRoutine: DailyRoutine) => {
+    storageService.saveRoutine(updatedRoutine, currentUser?.id);
+    setAllRoutines({ ...allRoutines, [dateKey]: updatedRoutine });
     triggerCloudSync();
   };
 
@@ -109,12 +120,12 @@ const App: React.FC = () => {
                 {isSyncing ? 'Cloud Syncing...' : currentUser ? 'Cloud Connected' : 'Local Only'}
               </span>
             </div>
-            {lastSavedTime && <span className="hidden md:block text-[8px] font-bold text-slate-600 uppercase">Synced: {lastSavedTime}</span>}
           </div>
 
           <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5">
             {[
               { mode: ViewMode.PLANNER, label: 'Schedule', icon: <Icons.Calendar /> },
+              { mode: ViewMode.REFLECTION, label: 'Memories', icon: <Icons.Pen /> },
               { mode: ViewMode.DAILY_STATS, label: 'Stats', icon: <Icons.Chart /> },
               { mode: ViewMode.TARGETS, label: 'Missions', icon: <Icons.Sparkles /> },
               { mode: ViewMode.SYNC, label: 'Backup', icon: <Icons.Cloud /> }
@@ -145,8 +156,11 @@ const App: React.FC = () => {
                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.4em]">{currentDate.toLocaleDateString('en-US', { weekday: 'long' })}</span>
                 </div>
                 <div className="flex items-center gap-2">
+                   <button onClick={() => setViewMode(ViewMode.REFLECTION)} className="p-3 bg-sky-500/10 rounded-2xl text-sky-400 border border-sky-500/20 hover:bg-sky-500/20 transition-all flex items-center gap-2">
+                      <Icons.Pen />
+                      <span className="text-[9px] font-black uppercase hidden sm:inline">Add Memories</span>
+                   </button>
                    <button onClick={() => setViewMode(ViewMode.HISTORY)} className="p-3 bg-white/5 rounded-2xl text-[9px] font-black uppercase border border-white/5">Archive</button>
-                   <button onClick={() => setViewMode(ViewMode.DAILY_STATS)} className="p-3 bg-white/5 rounded-2xl text-emerald-400 border border-emerald-500/20"><Icons.Chart /></button>
                    <button onClick={() => setCurrentDate(new Date())} className="p-3 bg-white/5 rounded-2xl text-[9px] font-black uppercase">Today</button>
                 </div>
               </div>
@@ -155,20 +169,20 @@ const App: React.FC = () => {
                 <div className="flex-[3] bg-black/40 backdrop-blur-3xl rounded-[4rem] border border-white/5 p-4 flex flex-col items-center justify-center min-h-[500px] relative">
                    <Timeline 
                     tasks={routine.tasks} 
-                    onAddTask={(s, e) => { if(!isPast) { setEditingTask({startTime:s, endTime:e}); setIsModalOpen(true); } }} 
-                    onEditTask={(t) => { if(!isPast) { setEditingTask(t); setIsModalOpen(true); } }} 
-                    onDeleteTask={() => {}} 
+                    onAddTask={(s, e) => { setEditingTask({startTime:s, endTime:e}); setIsModalOpen(true); }} 
+                    onEditTask={(t) => { setEditingTask(t); setIsModalOpen(true); }} 
+                    onDeleteTask={handleDeleteTask} 
                     onToggleComplete={handleSetTaskStatus} 
                     selectionStart={selectionStart} 
                     setSelectionStart={setSelectionStart} 
-                    isReadOnly={isPast} 
+                    isReadOnly={false} 
                   />
                 </div>
                 <div className="flex-[2] bg-white/5 backdrop-blur-3xl rounded-[3rem] p-8 border border-white/5 overflow-y-auto max-h-[500px] no-scrollbar">
                    <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.4em] mb-6">Execution Log</h3>
                    <div className="space-y-3">
                      {sortedTasks.map(t => (
-                       <div key={t.id} onClick={() => !isPast && handleSetTaskStatus(t.id, !t.completed)} className="p-4 rounded-2xl bg-slate-900/40 border border-white/5 flex items-center justify-between cursor-pointer group">
+                       <div key={t.id} onClick={() => handleSetTaskStatus(t.id, !t.completed)} className="p-4 rounded-2xl bg-slate-900/40 border border-white/5 flex items-center justify-between cursor-pointer group">
                          <div>
                             <h4 className={`text-xs font-black ${t.completed ? 'text-emerald-400' : 'text-white'}`}>{t.title}</h4>
                             <span className="text-[8px] font-bold text-slate-500 uppercase">{t.category}</span>
@@ -176,6 +190,9 @@ const App: React.FC = () => {
                          <div className={`p-2 rounded-lg ${t.completed ? 'bg-emerald-600 text-white' : 'bg-white/5 text-slate-500'}`}><Icons.Check /></div>
                        </div>
                      ))}
+                     {sortedTasks.length === 0 && (
+                       <div className="py-10 text-center opacity-20 text-[10px] font-black uppercase tracking-widest">No plans yet for this date</div>
+                     )}
                    </div>
                 </div>
               </div>
@@ -186,10 +203,11 @@ const App: React.FC = () => {
           {viewMode === ViewMode.TARGETS && <TargetsView targets={targets} onUpdateTargets={updateTargets} />}
           {viewMode === ViewMode.SYNC && <SyncView onSyncComplete={() => setViewMode(ViewMode.PLANNER)} />}
           {viewMode === ViewMode.DAILY_STATS && <DailyStatsView routine={routine} onBack={() => setViewMode(ViewMode.PLANNER)} />}
+          {viewMode === ViewMode.REFLECTION && <ReflectionView routine={routine} onUpdate={handleUpdateRoutine} onNotification={(m, t) => setNotification({msg:m, type:t})} onBack={() => setViewMode(ViewMode.PLANNER)} />}
         </div>
       </main>
 
-      <TaskModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleSaveTask} initialTask={editingTask} />
+      <TaskModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleSaveTask} onDelete={handleDeleteTask} initialTask={editingTask} />
     </div>
   );
 };

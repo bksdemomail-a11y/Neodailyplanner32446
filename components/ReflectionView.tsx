@@ -43,7 +43,7 @@ const ReflectionView: React.FC<ReflectionViewProps> = ({ routine, onUpdate, onNo
   return (
     <div className="min-h-full bg-slate-950/20 backdrop-blur-3xl p-6 sm:p-12 overflow-y-auto no-scrollbar pb-32 animate-in fade-in duration-700">
       <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-16">
+        <div className="flex flex-col sm:flex-row items-center justify-between mb-16 gap-6">
           <button 
             onClick={onBack}
             className="group flex items-center gap-3 px-6 py-3 bg-white/5 text-slate-400 rounded-2xl hover:text-white hover:bg-white/10 transition-all border border-white/5"
@@ -51,9 +51,9 @@ const ReflectionView: React.FC<ReflectionViewProps> = ({ routine, onUpdate, onNo
             <Icons.ChevronLeft />
             <span className="text-[10px] font-black uppercase tracking-[0.3em]">Back to Planner</span>
           </button>
-          <div className="text-right">
+          <div className="text-center sm:text-right">
             <h2 className="text-4xl font-black text-white tracking-tighter leading-none">Day Reflection</h2>
-            <p className="text-sky-500 font-black uppercase tracking-[0.4em] text-[9px] mt-2">The Archive of {routine.date}</p>
+            <p className="text-sky-500 font-black uppercase tracking-[0.4em] text-[9px] mt-2">The Memory Archive: {routine.date}</p>
           </div>
         </div>
 
@@ -83,7 +83,7 @@ const ReflectionView: React.FC<ReflectionViewProps> = ({ routine, onUpdate, onNo
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
               <div>
                 <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.6em]">Media Logs</h3>
-                <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest mt-1">Videos and photos of the journey</p>
+                <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest mt-1">Links to videos or photos from today</p>
               </div>
               <div className="flex items-center gap-3 bg-black/40 p-2 rounded-2xl border border-white/5 flex-grow max-w-md">
                 <input 
@@ -104,20 +104,27 @@ const ReflectionView: React.FC<ReflectionViewProps> = ({ routine, onUpdate, onNo
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {routine.mediaLinks?.map((link, idx) => (
-                <div key={idx} className="relative aspect-video group rounded-[2rem] overflow-hidden border border-white/5 shadow-2xl bg-black">
+                <div key={idx} className="relative aspect-video group rounded-[2rem] overflow-hidden border border-white/5 shadow-2xl bg-black transition-all hover:scale-[1.02]">
                   <iframe 
                     src={getEmbedUrl(link)}
                     className="w-full h-full pointer-events-none"
                     title={`Media Log ${idx}`}
                   />
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center backdrop-blur-sm">
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center backdrop-blur-[2px]">
                     <div className="flex gap-4">
-                       <a href={link} target="_blank" rel="noopener noreferrer" className="p-4 bg-white/10 rounded-full hover:bg-white text-slate-900 transition-all shadow-xl">
+                       <a 
+                         href={link} 
+                         target="_blank" 
+                         rel="noopener noreferrer" 
+                         className="p-4 bg-white text-slate-900 rounded-full hover:bg-sky-500 hover:text-white transition-all shadow-xl"
+                         title="Open in Google Drive"
+                       >
                           <Icons.Video />
                        </a>
                        <button 
                         onClick={() => removeMediaLink(idx)}
-                        className="p-4 bg-rose-600/20 text-rose-500 rounded-full hover:bg-rose-600 hover:text-white transition-all shadow-xl"
+                        className="p-4 bg-rose-600/80 text-white rounded-full hover:bg-rose-600 transition-all shadow-xl"
+                        title="Remove Log"
                        >
                           <Icons.Trash />
                        </button>
@@ -126,6 +133,13 @@ const ReflectionView: React.FC<ReflectionViewProps> = ({ routine, onUpdate, onNo
                   <div className="absolute bottom-4 left-6 text-[8px] font-black text-white/40 uppercase tracking-[0.4em] pointer-events-none">
                      Log #{idx + 1}
                   </div>
+                  {/* Overlay to catch clicks on the iframe area for easier navigation */}
+                  <a 
+                    href={link} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="absolute inset-0 z-0 sm:hidden"
+                  />
                 </div>
               ))}
               
