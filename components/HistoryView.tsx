@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { DailyRoutine } from '../types';
+import React, { useState, useMemo } from 'react';
+import { DailyRoutine, TimeBlock } from '../types';
 import { Icons } from '../constants';
 import Timeline from './Timeline';
 
@@ -10,6 +10,152 @@ interface HistoryViewProps {
   onAddTask: (date: Date, start: number, end: number) => void;
   onEditTask: (task: any) => void;
 }
+
+const ProductivityPulse: React.FC<{ allRoutines: Record<string, DailyRoutine> }> = ({ allRoutines }) => {
+  const [range, setRange] = useState<7 | 30>(7);
+
+  const data = useMemo(() => {
+    const points: { date: string, hours: number }[] = [];
+    const today = new Date();
+    
+    for (let i = range - 1; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const key = d.toISOString().split('T')[0];
+      const routine = allRoutines[key];
+      
+      let productiveHours = 0;
+      if (routine) {
+        productiveHours = routine.tasks
+          .filter(t => t.completed)
+          .reduce((acc, t) => acc + (t.endTime - t.startTime), 0);
+      }
+      
+      points.push({ 
+        date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), 
+        hours: productiveHours 
+      });
+    }
+    return points;
+  }, [allRoutines, range]);
+
+  const maxHours = Math.max(...data.map(p => p.hours), 4); // Minimum scale of 4 hours
+  const width = 800;
+  const height = 150;
+  const padding = 20;
+
+  const pointsString = data.map((p, i) => {
+    const x = padding + (i * (width - 2 * padding) / (data.length - 1));
+    const y = (height - padding) - (p.hours / maxHours * (height - 2 * padding));
+    return `${x},${y}`;
+  }).join(' ');
+
+  return (
+    <div className="w-full bg-slate-950/60 backdrop-blur-3xl rounded-[2.5rem] border border-white/5 p-8 mb-8 overflow-hidden relative group">
+      <div className="absolute inset-0 opacity-[0.03] pointer-events-none" 
+           style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
+      
+      <div className="flex items-center justify-between mb-8 relative z-10">
+        <div>
+          <h3 className="text-[11px] font-black text-sky-400 uppercase tracking-[0.4em] mb-1">Productivity Pulse</h3>
+          <p className="text-white text-lg font-black tracking-tighter">Your Momentum ECG</p>
+        </div>
+        <div className="flex bg-white/5 p-1 rounded-xl border border-white/5">
+          <button 
+            onClick={() => setRange(7)} 
+            className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${range === 7 ? 'bg-sky-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
+          >
+            7 Days
+          </button>
+          <button 
+            onClick={() => setRange(30)} 
+            className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${range === 30 ? 'bg-sky-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
+          >
+            30 Days
+          </button>
+        </div>
+      </div>
+
+      <div className="relative h-[150px] w-full">
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible" preserveAspectRatio="none">
+          <defs>
+            <filter id="ecg-glow" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="3" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+            <linearGradient id="line-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#0ea5e9" stopOpacity="0.4" />
+              <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+
+          {/* Grid lines */}
+          {[0, 0.25, 0.5, 0.75, 1].map(v => (
+            <line 
+              key={v} 
+              x1={padding} 
+              y1={padding + v * (height - 2 * padding)} 
+              x2={width - padding} 
+              y2={padding + v * (height - 2 * padding)} 
+              className="stroke-white/5" 
+              strokeWidth="1" 
+            />
+          ))}
+
+          {/* Area Fill */}
+          <polyline
+            points={`${padding},${height-padding} ${pointsString} ${width-padding},${height-padding}`}
+            fill="url(#line-grad)"
+            className="transition-all duration-1000"
+          />
+
+          {/* Pulse Line */}
+          <polyline
+            fill="none"
+            stroke="#0ea5e9"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            points={pointsString}
+            filter="url(#ecg-glow)"
+            className="transition-all duration-1000"
+          />
+
+          {/* Data Points */}
+          {data.map((p, i) => {
+            const x = padding + (i * (width - 2 * padding) / (data.length - 1));
+            const y = (height - padding) - (p.hours / maxHours * (height - 2 * padding));
+            return (
+              <g key={i} className="group/point">
+                <circle 
+                  cx={x} cy={y} r="4" 
+                  className="fill-sky-400 opacity-0 group-hover/point:opacity-100 transition-opacity" 
+                />
+                <circle 
+                  cx={x} cy={y} r="12" 
+                  className="fill-transparent cursor-pointer" 
+                />
+                <title>{`${p.date}: ${p.hours.toFixed(1)}h`}</title>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+
+      <div className="flex justify-between mt-4 px-2">
+        <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">{data[0].date}</span>
+        <div className="flex items-center gap-4">
+           <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-sky-500 shadow-[0_0_8px_#0ea5e9]" />
+              <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Active Output</span>
+           </div>
+           <div className="text-[9px] font-black text-white uppercase tracking-[0.2em]">Peak: {maxHours.toFixed(1)}h</div>
+        </div>
+        <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">{data[data.length - 1].date}</span>
+      </div>
+    </div>
+  );
+};
 
 const HistoryView: React.FC<HistoryViewProps> = ({ allRoutines, onSelectDate }) => {
   const [viewDate, setViewDate] = useState(new Date());
@@ -45,6 +191,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ allRoutines, onSelectDate }) 
       const isToday = formatDateKey(new Date()) === dateStr;
       
       const taskCount = routine?.tasks.length || 0;
+      const completedCount = routine?.tasks.filter(t => t.completed).length || 0;
 
       calendarDays.push(
         <button
@@ -59,13 +206,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({ allRoutines, onSelectDate }) 
           }`}
         >
           <span className={`text-sm font-black ${isSelected || isToday ? 'text-white' : 'text-slate-500'}`}>{day}</span>
-          {taskCount > 0 && (
-            <div className="flex gap-0.5 mt-auto">
-               {[...Array(Math.min(taskCount, 4))].map((_, i) => (
-                 <div key={i} className="w-1 h-1 rounded-full bg-sky-500" />
-               ))}
-            </div>
-          )}
+          <div className="flex flex-wrap gap-0.5 mt-auto">
+             {[...Array(Math.min(taskCount, 8))].map((_, i) => (
+               <div 
+                 key={i} 
+                 className={`w-1 h-1 rounded-full ${i < completedCount ? 'bg-sky-400 shadow-[0_0_3px_#38bdf8]' : 'bg-slate-700'}`} 
+               />
+             ))}
+          </div>
         </button>
       );
     }
@@ -73,45 +221,49 @@ const HistoryView: React.FC<HistoryViewProps> = ({ allRoutines, onSelectDate }) 
   };
 
   return (
-    <div className="max-w-7xl mx-auto py-8 px-4 h-full flex flex-col lg:flex-row gap-8 overflow-hidden">
-      {/* Calendar Side */}
-      <div className="flex-grow lg:max-w-xl overflow-y-auto no-scrollbar">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h2 className="text-3xl font-black text-white tracking-tight">Archive</h2>
-            <p className="text-slate-500 font-bold uppercase tracking-widest text-[9px] mt-1">Select a date to preview</p>
+    <div className="max-w-7xl mx-auto py-8 px-4 h-full flex flex-col overflow-hidden pb-32">
+      {/* Productivity Pulse ECG Chart */}
+      <ProductivityPulse allRoutines={allRoutines} />
+
+      <div className="flex flex-col lg:flex-row gap-8 overflow-hidden flex-grow">
+        {/* Calendar Side */}
+        <div className="flex-grow lg:max-w-xl overflow-y-auto no-scrollbar">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h2 className="text-3xl font-black text-white tracking-tight">Archive</h2>
+              <p className="text-slate-500 font-bold uppercase tracking-widest text-[9px] mt-1">Select a date to preview</p>
+            </div>
+            <div className="flex items-center gap-2 bg-slate-900/60 p-1.5 rounded-2xl border border-white/5">
+              <button onClick={handlePrevMonth} className="p-2 hover:bg-white/5 rounded-xl text-slate-400"><Icons.ChevronLeft /></button>
+              <span className="px-3 text-[10px] font-black text-white uppercase tracking-widest min-w-[100px] text-center">
+                {viewDate.toLocaleString('default', { month: 'short' })} {currentYear}
+              </span>
+              <button onClick={handleNextMonth} className="p-2 hover:bg-white/5 rounded-xl text-slate-400"><Icons.ChevronRight /></button>
+            </div>
           </div>
-          <div className="flex items-center gap-2 bg-slate-900/60 p-1.5 rounded-2xl border border-white/5">
-            <button onClick={handlePrevMonth} className="p-2 hover:bg-white/5 rounded-xl text-slate-400"><Icons.ChevronLeft /></button>
-            <span className="px-3 text-[10px] font-black text-white uppercase tracking-widest min-w-[100px] text-center">
-              {viewDate.toLocaleString('default', { month: 'short' })} {currentYear}
-            </span>
-            <button onClick={handleNextMonth} className="p-2 hover:bg-white/5 rounded-xl text-slate-400"><Icons.ChevronRight /></button>
+
+          <div className="grid grid-cols-7 gap-2">
+            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(day => (
+              <div key={day} className="text-center pb-2 text-[9px] font-black text-slate-600 uppercase">{day}</div>
+            ))}
+            {renderCalendar()}
           </div>
+
+          <button 
+            onClick={() => onSelectDate(selectedDate)}
+            className="w-full mt-8 py-4 bg-sky-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-3xl hover:bg-sky-500 transition-all flex items-center justify-center gap-3"
+          >
+            <Icons.Calendar /> Open in Full Planner
+          </button>
         </div>
 
-        <div className="grid grid-cols-7 gap-2">
-          {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(day => (
-            <div key={day} className="text-center pb-2 text-[9px] font-black text-slate-600 uppercase">{day}</div>
-          ))}
-          {renderCalendar()}
-        </div>
-
-        <button 
-          onClick={() => onSelectDate(selectedDate)}
-          className="w-full mt-8 py-4 bg-sky-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-3xl hover:bg-sky-500 transition-all flex items-center justify-center gap-3"
-        >
-          <Icons.Calendar /> Open in Full Planner
-        </button>
-      </div>
-
-      {/* Clock Preview Side */}
-      <div className="flex-grow bg-black/40 backdrop-blur-3xl rounded-[3rem] border border-white/5 p-6 flex flex-col items-center justify-center relative overflow-hidden min-h-[500px]">
-         <div className="absolute top-8 left-8">
+        {/* Clock Preview Side */}
+        <div className="flex-grow bg-black/40 backdrop-blur-3xl rounded-[3rem] border border-white/5 p-6 flex flex-col items-center justify-center relative overflow-hidden min-h-[500px]">
+          <div className="absolute top-8 left-8">
             <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em]">Day Preview</h3>
             <p className="text-xl font-black text-white tracking-tighter mt-1">{selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</p>
-         </div>
-         <div className="w-full h-full max-h-[500px]">
+          </div>
+          <div className="w-full h-full max-h-[500px]">
             <Timeline 
               tasks={currentRoutine.tasks} 
               onAddTask={() => onSelectDate(selectedDate)} 
@@ -122,7 +274,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({ allRoutines, onSelectDate }) 
               setSelectionStart={() => {}} 
               isReadOnly={true}
             />
-         </div>
+          </div>
+        </div>
       </div>
     </div>
   );

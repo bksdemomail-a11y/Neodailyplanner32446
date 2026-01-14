@@ -61,10 +61,18 @@ export const storageService = {
   saveSession: (user: User) => {
     localStorage.setItem(SESSION_KEY, JSON.stringify(user));
   },
-  getSession: (): User | null => {
+  
+  // Updated for direct access: returns a default local user if no session exists
+  getSession: (): User => {
     const session = localStorage.getItem(SESSION_KEY);
-    return session ? JSON.parse(session) : null;
+    if (session) return JSON.parse(session);
+    
+    // Default local user for direct access
+    const defaultUser = { id: 'local-default-id', username: 'Local User' };
+    storageService.saveSession(defaultUser);
+    return defaultUser;
   },
+
   clearSession: () => {
     localStorage.removeItem(SESSION_KEY);
   },

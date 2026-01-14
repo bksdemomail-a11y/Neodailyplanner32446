@@ -6,7 +6,6 @@ import HistoryView from './components/HistoryView';
 import TargetsView from './components/TargetsView';
 import WeatherView from './components/WeatherView';
 import SyncView from './components/SyncView';
-import AuthView from './components/AuthView';
 import ReflectionView from './components/ReflectionView';
 import DailyStatsView from './components/DailyStatsView';
 import { storageService, cloudService } from './services/storageService';
@@ -35,11 +34,9 @@ const App: React.FC = () => {
     const initApp = async () => {
       await storageService.requestPersistence();
       
-      // Load session
+      // Load session or initialize direct access user
       const savedUser = storageService.getSession();
-      if (savedUser) {
-        setCurrentUser(savedUser);
-      }
+      setCurrentUser(savedUser);
       
       setAllRoutines(storageService.getAllRoutines());
       setTargets(storageService.getTargets());
@@ -68,18 +65,6 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAuthSuccess = (user: User) => {
-    setCurrentUser(user);
-    storageService.saveSession(user);
-    setViewMode(ViewMode.PLANNER);
-  };
-
-  const handleLogout = () => {
-    storageService.clearSession();
-    setCurrentUser(null);
-    setViewMode(ViewMode.PLANNER);
-  };
-
   const handleSaveTask = (task: TimeBlock) => {
     const newTasks = editingTask?.id ? routine.tasks.map(t => t.id === task.id ? task : t) : [...routine.tasks, task];
     newTasks.sort((a, b) => a.startTime - b.startTime);
@@ -87,7 +72,7 @@ const App: React.FC = () => {
     
     storageService.saveRoutine(updatedRoutine, currentUser || undefined);
     setAllRoutines({ ...allRoutines, [dateKey]: updatedRoutine });
-    setNotification({ msg: isCloudConnected ? 'Cloud Updated' : 'Saved Locally', type: 'success' });
+    setNotification({ msg: 'Saved Locally', type: 'success' });
     triggerCloudSync();
   };
 
@@ -128,10 +113,6 @@ const App: React.FC = () => {
   // Prevent flicker during session initialization
   if (isLoadingSession) return null;
 
-  if (!currentUser && viewMode !== ViewMode.SYNC) {
-    return <AuthView onAuthSuccess={handleAuthSuccess} />;
-  }
-
   return (
     <div className="flex flex-col h-screen bg-[#020617] text-slate-100 overflow-hidden relative">
       {/* REINFORCED HEADER: Fixed height, top-level z-index */}
@@ -144,10 +125,10 @@ const App: React.FC = () => {
             </button>
             
             <div className="flex flex-col">
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all ${isCloudConnected ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
-                <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? (isCloudConnected ? 'bg-emerald-400 animate-ping' : 'bg-amber-400 animate-ping') : (isCloudConnected ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-amber-500 shadow-[0_0_8px_#f59e0b]')}`} />
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/5`}>
+                <div className="w-1.5 h-1.5 rounded-full bg-sky-500 shadow-[0_0_8px_#0ea5e9]" />
                 <span className="text-[8px] font-black uppercase tracking-widest whitespace-nowrap">
-                  {isSyncing ? 'Syncing...' : isCloudConnected ? 'Cloud Active' : 'Local Only'}
+                  Browser Storage Active
                 </span>
               </div>
               <span className="text-[6px] text-slate-500 uppercase font-black tracking-widest mt-1 ml-2">Secure: {formatLastSaved(lastSaved)}</span>
@@ -161,14 +142,13 @@ const App: React.FC = () => {
               { mode: ViewMode.WEATHER, label: 'Weather', icon: <Icons.Sun /> },
               { mode: ViewMode.DAILY_STATS, label: 'Stats', icon: <Icons.Chart /> },
               { mode: ViewMode.TARGETS, label: 'Missions', icon: <Icons.Sparkles /> },
-              { mode: ViewMode.SYNC, label: 'Backup', icon: <Icons.Cloud /> }
+              { mode: ViewMode.SYNC, label: 'Data Hub', icon: <Icons.Cloud /> }
             ].map(nav => (
               <button key={nav.mode} onClick={() => setViewMode(nav.mode)} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${viewMode === nav.mode ? 'bg-sky-600 text-white shadow-xl' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
                 <span className="flex-shrink-0">{nav.icon}</span>
                 <span className="hidden md:inline">{nav.label}</span>
               </button>
             ))}
-            {currentUser && <button onClick={handleLogout} title="Log Out" className="ml-2 p-2 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-all"><Icons.X /></button>}
           </div>
         </div>
       </header>
