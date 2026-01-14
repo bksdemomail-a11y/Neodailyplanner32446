@@ -25,10 +25,11 @@ const ProductivityPulse: React.FC<{ allRoutines: Record<string, DailyRoutine> }>
       const routine = allRoutines[key];
       
       let productiveHours = 0;
-      if (routine) {
+      // Defensive check: routine or routine.tasks might be undefined/malformed
+      if (routine && Array.isArray(routine.tasks)) {
         productiveHours = routine.tasks
-          .filter(t => t.completed)
-          .reduce((acc, t) => acc + (t.endTime - t.startTime), 0);
+          .filter(t => t && t.completed)
+          .reduce((acc, t) => acc + (Math.abs(t.endTime - t.startTime) || 0), 0);
       }
       
       points.push({ 
@@ -39,7 +40,7 @@ const ProductivityPulse: React.FC<{ allRoutines: Record<string, DailyRoutine> }>
     return points;
   }, [allRoutines, range]);
 
-  const maxHours = Math.max(...data.map(p => p.hours), 4); // Minimum scale of 4 hours
+  const maxHours = Math.max(...data.map(p => p.hours), 4);
   const width = 800;
   const height = 150;
   const padding = 20;
@@ -57,8 +58,8 @@ const ProductivityPulse: React.FC<{ allRoutines: Record<string, DailyRoutine> }>
       
       <div className="flex items-center justify-between mb-8 relative z-10">
         <div>
-          <h3 className="text-[11px] font-black text-sky-400 uppercase tracking-[0.4em] mb-1">Productivity Pulse</h3>
-          <p className="text-white text-lg font-black tracking-tighter">Your Momentum ECG</p>
+          <h3 className="text-[11px] font-black text-sky-400 uppercase tracking-[0.4em] mb-1">Temporal Momentum</h3>
+          <p className="text-white text-lg font-black tracking-tighter">Consistency Log</p>
         </div>
         <div className="flex bg-white/5 p-1 rounded-xl border border-white/5">
           <button 
@@ -89,69 +90,24 @@ const ProductivityPulse: React.FC<{ allRoutines: Record<string, DailyRoutine> }>
             </linearGradient>
           </defs>
 
-          {/* Grid lines */}
           {[0, 0.25, 0.5, 0.75, 1].map(v => (
-            <line 
-              key={v} 
-              x1={padding} 
-              y1={padding + v * (height - 2 * padding)} 
-              x2={width - padding} 
-              y2={padding + v * (height - 2 * padding)} 
-              className="stroke-white/5" 
-              strokeWidth="1" 
-            />
+            <line key={v} x1={padding} y1={padding + v * (height - 2 * padding)} x2={width - padding} y2={padding + v * (height - 2 * padding)} className="stroke-white/5" strokeWidth="1" />
           ))}
 
-          {/* Area Fill */}
-          <polyline
-            points={`${padding},${height-padding} ${pointsString} ${width-padding},${height-padding}`}
-            fill="url(#line-grad)"
-            className="transition-all duration-1000"
-          />
-
-          {/* Pulse Line */}
-          <polyline
-            fill="none"
-            stroke="#0ea5e9"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            points={pointsString}
-            filter="url(#ecg-glow)"
-            className="transition-all duration-1000"
-          />
-
-          {/* Data Points */}
-          {data.map((p, i) => {
-            const x = padding + (i * (width - 2 * padding) / (data.length - 1));
-            const y = (height - padding) - (p.hours / maxHours * (height - 2 * padding));
-            return (
-              <g key={i} className="group/point">
-                <circle 
-                  cx={x} cy={y} r="4" 
-                  className="fill-sky-400 opacity-0 group-hover/point:opacity-100 transition-opacity" 
-                />
-                <circle 
-                  cx={x} cy={y} r="12" 
-                  className="fill-transparent cursor-pointer" 
-                />
-                <title>{`${p.date}: ${p.hours.toFixed(1)}h`}</title>
-              </g>
-            );
-          })}
+          <polyline points={`${padding},${height-padding} ${pointsString} ${width-padding},${height-padding}`} fill="url(#line-grad)" className="transition-all duration-1000" />
+          <polyline fill="none" stroke="#0ea5e9" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" points={pointsString} filter="url(#ecg-glow)" className="transition-all duration-1000" />
         </svg>
       </div>
 
       <div className="flex justify-between mt-4 px-2">
-        <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">{data[0].date}</span>
+        <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">{data[0]?.date}</span>
         <div className="flex items-center gap-4">
            <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-sky-500 shadow-[0_0_8px_#0ea5e9]" />
-              <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Active Output</span>
+              <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Output Hours</span>
            </div>
-           <div className="text-[9px] font-black text-white uppercase tracking-[0.2em]">Peak: {maxHours.toFixed(1)}h</div>
         </div>
-        <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">{data[data.length - 1].date}</span>
+        <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">{data[data.length - 1]?.date}</span>
       </div>
     </div>
   );
@@ -190,8 +146,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ allRoutines, onSelectDate }) 
       const isSelected = formatDateKey(selectedDate) === dateStr;
       const isToday = formatDateKey(new Date()) === dateStr;
       
-      const taskCount = routine?.tasks.length || 0;
-      const completedCount = routine?.tasks.filter(t => t.completed).length || 0;
+      const tasksArr = Array.isArray(routine?.tasks) ? routine.tasks : [];
+      const taskCount = tasksArr.length;
+      const completedCount = tasksArr.filter(t => t.completed).length;
 
       calendarDays.push(
         <button
@@ -199,7 +156,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ allRoutines, onSelectDate }) 
           onClick={() => setSelectedDate(date)}
           className={`relative h-16 sm:h-20 p-2 rounded-2xl border transition-all hover:scale-105 active:scale-95 text-left flex flex-col justify-between group ${
             isSelected 
-              ? 'border-sky-500 bg-sky-500/20 shadow-lg shadow-sky-500/10 scale-105 z-10' 
+              ? 'border-sky-500 bg-sky-500/20 shadow-lg shadow-sky-500/10 z-10' 
               : isToday
               ? 'border-white/20 bg-white/5'
               : 'border-white/5 bg-slate-900/40 hover:bg-slate-800/60'
@@ -208,10 +165,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ allRoutines, onSelectDate }) 
           <span className={`text-sm font-black ${isSelected || isToday ? 'text-white' : 'text-slate-500'}`}>{day}</span>
           <div className="flex flex-wrap gap-0.5 mt-auto">
              {[...Array(Math.min(taskCount, 8))].map((_, i) => (
-               <div 
-                 key={i} 
-                 className={`w-1 h-1 rounded-full ${i < completedCount ? 'bg-sky-400 shadow-[0_0_3px_#38bdf8]' : 'bg-slate-700'}`} 
-               />
+               <div key={i} className={`w-1 h-1 rounded-full ${i < completedCount ? 'bg-sky-400 shadow-[0_0_3px_#38bdf8]' : 'bg-slate-700'}`} />
              ))}
           </div>
         </button>
@@ -222,11 +176,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ allRoutines, onSelectDate }) 
 
   return (
     <div className="max-w-7xl mx-auto py-8 px-4 h-full flex flex-col overflow-hidden pb-32">
-      {/* Productivity Pulse ECG Chart */}
       <ProductivityPulse allRoutines={allRoutines} />
 
       <div className="flex flex-col lg:flex-row gap-8 overflow-hidden flex-grow">
-        {/* Calendar Side */}
         <div className="flex-grow lg:max-w-xl overflow-y-auto no-scrollbar">
           <div className="flex items-center justify-between mb-8">
             <div>
@@ -257,15 +209,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({ allRoutines, onSelectDate }) 
           </button>
         </div>
 
-        {/* Clock Preview Side */}
         <div className="flex-grow bg-black/40 backdrop-blur-3xl rounded-[3rem] border border-white/5 p-6 flex flex-col items-center justify-center relative overflow-hidden min-h-[500px]">
           <div className="absolute top-8 left-8">
-            <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em]">Day Preview</h3>
+            <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em]">Snapshot</h3>
             <p className="text-xl font-black text-white tracking-tighter mt-1">{selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</p>
           </div>
           <div className="w-full h-full max-h-[500px]">
             <Timeline 
-              tasks={currentRoutine.tasks} 
+              tasks={Array.isArray(currentRoutine.tasks) ? currentRoutine.tasks : []} 
               onAddTask={() => onSelectDate(selectedDate)} 
               onEditTask={() => onSelectDate(selectedDate)} 
               onDeleteTask={() => {}} 

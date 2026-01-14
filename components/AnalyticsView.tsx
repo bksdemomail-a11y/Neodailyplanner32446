@@ -11,19 +11,22 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ allRoutines }) => {
     const totalMinutes: Record<TaskCategory, number> = { Work: 0, Health: 0, Social: 0, Hobby: 0, Personal: 0, Rest: 0 };
     const completedMinutes: Record<TaskCategory, number> = { Work: 0, Health: 0, Social: 0, Hobby: 0, Personal: 0, Rest: 0 };
     
-    // Explicitly cast Object.values to DailyRoutine[] to avoid 'unknown' type errors
     (Object.values(allRoutines) as DailyRoutine[]).forEach(r => {
-      r.tasks.forEach(t => {
-        const duration = (t.endTime - t.startTime) * 60;
-        totalMinutes[t.category] += duration;
-        if (t.completed) completedMinutes[t.category] += duration;
-      });
+      // Defensive check: imported routines might have missing tasks property
+      if (r && Array.isArray(r.tasks)) {
+        r.tasks.forEach(t => {
+          if (t && t.category) {
+            const duration = (t.endTime - t.startTime) * 60;
+            totalMinutes[t.category] += duration;
+            if (t.completed) completedMinutes[t.category] += duration;
+          }
+        });
+      }
     });
 
     return { totalMinutes, completedMinutes };
   }, [allRoutines]);
 
-  // Cast Object.values to number[] for Math.max compatibility
   const maxVal = Math.max(...(Object.values(stats.totalMinutes) as number[]), 1);
   const radarPoints = CATEGORIES.map((cat, i) => {
     const angle = (i / CATEGORIES.length) * 2 * Math.PI - Math.PI / 2;

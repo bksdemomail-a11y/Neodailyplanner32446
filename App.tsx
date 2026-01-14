@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Timeline from './components/Timeline';
 import TaskModal from './components/TaskModal';
 import HistoryView from './components/HistoryView';
@@ -29,22 +29,37 @@ const App: React.FC = () => {
 
   const isCloudConnected = cloudService.isAvailable();
 
+  // Unified load function that can be called to refresh state without browser reloads
+  const loadTemporalData = useCallback(async () => {
+    try {
+      const routines = storageService.getAllRoutines();
+      setAllRoutines(routines || {});
+      
+      const t = storageService.getTargets();
+      setTargets(Array.isArray(t) ? t : []);
+      
+      setLastSaved(storageService.getLastSavedTime());
+    } catch (e) {
+      console.error("Load Error:", e);
+    }
+  }, []);
+
   useEffect(() => {
     document.documentElement.classList.add('dark');
     const initApp = async () => {
-      await storageService.requestPersistence();
-      
-      // Load session or initialize direct access user
-      const savedUser = storageService.getSession();
-      setCurrentUser(savedUser);
-      
-      setAllRoutines(storageService.getAllRoutines());
-      setTargets(storageService.getTargets());
-      setLastSaved(storageService.getLastSavedTime());
-      setIsLoadingSession(false);
+      try {
+        await storageService.requestPersistence();
+        const savedUser = storageService.getSession();
+        setCurrentUser(savedUser);
+        await loadTemporalData();
+      } catch (e) {
+        console.error("Init Error:", e);
+      } finally {
+        setIsLoadingSession(false);
+      }
     };
     initApp();
-  }, []);
+  }, [loadTemporalData]);
 
   useEffect(() => {
     if (notification) {
@@ -54,8 +69,17 @@ const App: React.FC = () => {
   }, [notification]);
 
   const dateKey = currentDate.toISOString().split('T')[0];
-  const routine = useMemo(() => allRoutines[dateKey] || { date: dateKey, tasks: [] }, [allRoutines, dateKey]);
-  const sortedTasks = useMemo(() => [...routine.tasks].sort((a, b) => a.startTime - b.startTime), [routine.tasks]);
+  
+  const routine = useMemo(() => {
+    const r = allRoutines[dateKey];
+    if (r && Array.isArray(r.tasks)) return r;
+    return { date: dateKey, tasks: [] };
+  }, [allRoutines, dateKey]);
+
+  const sortedTasks = useMemo(() => {
+    if (!routine || !Array.isArray(routine.tasks)) return [];
+    return [...routine.tasks].sort((a, b) => a.startTime - b.startTime);
+  }, [routine.tasks]);
 
   const triggerCloudSync = async () => {
     setLastSaved(new Date().toISOString());
@@ -70,52 +94,57 @@ const App: React.FC = () => {
     newTasks.sort((a, b) => a.startTime - b.startTime);
     const updatedRoutine = { ...routine, tasks: newTasks };
     
-    storageService.saveRoutine(updatedRoutine, currentUser || undefined);
+    storageService.saveRoutine(updatedRoutine);
     setAllRoutines({ ...allRoutines, [dateKey]: updatedRoutine });
-    setNotification({ msg: 'Saved Locally', type: 'success' });
+    setNotification({ msg: 'Temporal Point Committed', type: 'success' });
     triggerCloudSync();
   };
 
   const handleDeleteTask = (id: string) => {
     const updatedRoutine = { ...routine, tasks: routine.tasks.filter(t => t.id !== id) };
-    storageService.saveRoutine(updatedRoutine, currentUser || undefined);
+    storageService.saveRoutine(updatedRoutine);
     setAllRoutines({ ...allRoutines, [dateKey]: updatedRoutine });
-    setNotification({ msg: 'Task Removed', type: 'info' });
+    setNotification({ msg: 'Point Erased', type: 'info' });
     setIsModalOpen(false);
     triggerCloudSync();
   };
 
   const handleUpdateRoutine = (updatedRoutine: DailyRoutine) => {
-    storageService.saveRoutine(updatedRoutine, currentUser || undefined);
+    storageService.saveRoutine(updatedRoutine);
     setAllRoutines({ ...allRoutines, [dateKey]: updatedRoutine });
     triggerCloudSync();
   };
 
   const handleSetTaskStatus = (id: string, completed: boolean) => {
     const updatedRoutine = { ...routine, tasks: routine.tasks.map(t => t.id === id ? { ...t, completed } : t) };
-    storageService.saveRoutine(updatedRoutine, currentUser || undefined);
+    storageService.saveRoutine(updatedRoutine);
     setAllRoutines({ ...allRoutines, [dateKey]: updatedRoutine });
     triggerCloudSync();
   };
 
   const updateTargets = (newTargets: Target[]) => {
     setTargets(newTargets);
-    storageService.saveTargets(newTargets, currentUser || undefined);
+    storageService.saveTargets(newTargets);
     triggerCloudSync();
   };
 
   const formatLastSaved = (iso: string | null) => {
-    if (!iso) return 'Never';
-    const date = new Date(iso);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (!iso) return 'None';
+    try {
+      const date = new Date(iso);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (e) { return 'None'; }
   };
 
-  // Prevent flicker during session initialization
-  if (isLoadingSession) return null;
+  if (isLoadingSession) return (
+    <div className="flex flex-col items-center justify-center h-screen w-screen bg-[#020617]">
+      <div className="w-12 h-12 bg-sky-600 rounded-2xl animate-pulse mb-6" />
+      <p className="text-[10px] font-black uppercase tracking-[0.5em] text-slate-500">Decrypting Vault...</p>
+    </div>
+  );
 
   return (
     <div className="flex flex-col h-screen bg-[#020617] text-slate-100 overflow-hidden relative">
-      {/* REINFORCED HEADER: Fixed height, top-level z-index */}
       <header className="h-16 flex-shrink-0 bg-black/80 backdrop-blur-3xl border-b border-white/5 px-4 z-[100] relative flex items-center">
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -123,13 +152,10 @@ const App: React.FC = () => {
               <div className="w-9 h-9 bg-sky-600 rounded-xl flex items-center justify-center text-white shadow-2xl transition-transform group-hover:scale-110"><Icons.Calendar /></div>
               <h1 className="text-[11px] font-black tracking-[0.4em] hidden sm:block uppercase">Chronos</h1>
             </button>
-            
             <div className="flex flex-col">
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/5`}>
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/5">
                 <div className="w-1.5 h-1.5 rounded-full bg-sky-500 shadow-[0_0_8px_#0ea5e9]" />
-                <span className="text-[8px] font-black uppercase tracking-widest whitespace-nowrap">
-                  Browser Storage Active
-                </span>
+                <span className="text-[8px] font-black uppercase tracking-widest">Live Vault</span>
               </div>
               <span className="text-[6px] text-slate-500 uppercase font-black tracking-widest mt-1 ml-2">Secure: {formatLastSaved(lastSaved)}</span>
             </div>
@@ -138,8 +164,8 @@ const App: React.FC = () => {
           <div className="flex items-center gap-1 bg-white/5 p-1 rounded-2xl border border-white/5 overflow-x-auto no-scrollbar max-w-[50%] sm:max-w-none">
             {[
               { mode: ViewMode.PLANNER, label: 'Schedule', icon: <Icons.Calendar /> },
-              { mode: ViewMode.REFLECTION, label: 'Memories', icon: <Icons.Pen /> },
-              { mode: ViewMode.WEATHER, label: 'Weather', icon: <Icons.Sun /> },
+              { mode: ViewMode.REFLECTION, label: 'Journal', icon: <Icons.Pen /> },
+              { mode: ViewMode.WEATHER, label: 'Sky', icon: <Icons.Sun /> },
               { mode: ViewMode.DAILY_STATS, label: 'Stats', icon: <Icons.Chart /> },
               { mode: ViewMode.TARGETS, label: 'Missions', icon: <Icons.Sparkles /> },
               { mode: ViewMode.SYNC, label: 'Data Hub', icon: <Icons.Cloud /> }
@@ -171,7 +197,7 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-2">
                    <button onClick={() => setViewMode(ViewMode.REFLECTION)} className="p-3.5 bg-sky-500/10 rounded-2xl text-sky-400 border border-sky-500/20 hover:bg-sky-500/20 transition-all flex items-center gap-2">
                       <Icons.Pen />
-                      <span className="text-[9px] font-black uppercase hidden sm:inline">Add Memories</span>
+                      <span className="text-[9px] font-black uppercase hidden sm:inline">Add Reflection</span>
                    </button>
                    <button onClick={() => setViewMode(ViewMode.HISTORY)} className="p-3.5 bg-white/5 rounded-2xl text-[9px] font-black uppercase border border-white/5 hover:bg-white/10 transition-all">Archive</button>
                    <button onClick={() => setCurrentDate(new Date())} className="p-3.5 bg-white/5 rounded-2xl text-[9px] font-black uppercase hover:bg-white/10 transition-all">Today</button>
@@ -204,7 +230,7 @@ const App: React.FC = () => {
                        </div>
                      ))}
                      {sortedTasks.length === 0 && (
-                       <div className="py-10 text-center opacity-20 text-[10px] font-black uppercase tracking-widest">No plans yet for this date</div>
+                       <div className="py-20 text-center opacity-20 text-[10px] font-black uppercase tracking-widest">Temporal Void</div>
                      )}
                    </div>
                 </div>
@@ -214,7 +240,7 @@ const App: React.FC = () => {
 
           {viewMode === ViewMode.HISTORY && <HistoryView allRoutines={allRoutines} onSelectDate={(d) => { setCurrentDate(d); setViewMode(ViewMode.PLANNER); }} onAddTask={()=>{}} onEditTask={()=>{}} />}
           {viewMode === ViewMode.TARGETS && <TargetsView targets={targets} onUpdateTargets={updateTargets} />}
-          {viewMode === ViewMode.SYNC && <SyncView userId={currentUser?.id} onSyncComplete={() => setViewMode(ViewMode.PLANNER)} />}
+          {viewMode === ViewMode.SYNC && <SyncView onSyncRefresh={() => { loadTemporalData(); setViewMode(ViewMode.PLANNER); }} />}
           {viewMode === ViewMode.WEATHER && <WeatherView />}
           {viewMode === ViewMode.DAILY_STATS && <DailyStatsView routine={routine} onBack={() => setViewMode(ViewMode.PLANNER)} />}
           {viewMode === ViewMode.REFLECTION && <ReflectionView routine={routine} onUpdate={handleUpdateRoutine} onNotification={(m, t) => setNotification({msg:m, type:t})} onBack={() => setViewMode(ViewMode.PLANNER)} />}

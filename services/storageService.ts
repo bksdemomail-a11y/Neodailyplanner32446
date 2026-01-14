@@ -1,6 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { DailyRoutine, Target, Template, User } from '../types';
+import { DailyRoutine, Target, Template, User, TaskCategory } from '../types';
 
 const GLOBAL_ROUTINE_KEY = 'chronos_planner_data_global';
 const GLOBAL_TARGETS_KEY = 'chronos_targets_data_global';
@@ -8,221 +8,175 @@ const GLOBAL_TEMPLATES_KEY = 'chronos_templates_data_global';
 const USERS_KEY = 'chronos_users_data_global';
 const SESSION_KEY = 'chronos_active_session';
 
-// Environment variables from Vite/Vercel
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY;
 
-// Initialize Supabase only if keys exist
 const supabase = (SUPABASE_URL && SUPABASE_KEY && SUPABASE_URL !== "undefined") 
   ? createClient(SUPABASE_URL, SUPABASE_KEY) 
   : null;
 
+// Unicode-safe Base64 encoding/decoding
+const toToken = (str: string) => btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode(parseInt(p1, 16))));
+const fromToken = (str: string) => {
+  try {
+    return decodeURIComponent(atob(str).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+  } catch (e) {
+    return '';
+  }
+};
+
 export const cloudService = {
   isAvailable: () => !!supabase,
-
   saveToCloud: async (userId: string, username: string, payload: any): Promise<boolean> => {
     if (!supabase) return false;
     try {
-      const { error } = await supabase
-        .from('chronos_sync')
-        .upsert({ 
-          user_id: userId, 
-          username: username,
-          data: payload,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
-      
+      const { error } = await supabase.from('chronos_sync').upsert({ user_id: userId, username, data: payload, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
       return !error;
-    } catch (e) {
-      console.warn("Cloud sync unavailable, continuing with local storage.");
-      return false;
-    }
-  },
-
-  loadFromCloud: async (username: string): Promise<any | null> => {
-    if (!supabase) return null;
-    try {
-      const { data, error } = await supabase
-        .from('chronos_sync')
-        .select('data')
-        .eq('username', username)
-        .single();
-      
-      if (error || !data) return null;
-      return data.data;
-    } catch (e) {
-      return null;
-    }
+    } catch (e) { return false; }
   }
 };
 
 export const storageService = {
-  // Session Persistence
-  saveSession: (user: User) => {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(user));
-  },
-  
-  // Updated for direct access: returns a default local user if no session exists
-  getSession: (): User => {
-    const session = localStorage.getItem(SESSION_KEY);
-    if (session) return JSON.parse(session);
-    
-    // Default local user for direct access
-    const defaultUser = { id: 'local-default-id', username: 'Local User' };
-    storageService.saveSession(defaultUser);
-    return defaultUser;
-  },
-
-  clearSession: () => {
-    localStorage.removeItem(SESSION_KEY);
-  },
-
-  // Request the browser to keep data forever
-  requestPersistence: async (): Promise<boolean> => {
+  // Fix: Add requestPersistence to allow storage persistence requests from App.tsx
+  requestPersistence: async () => {
     if (navigator.storage && navigator.storage.persist) {
-      const isPersisted = await navigator.storage.persist();
-      console.log(`Storage persistence: ${isPersisted ? 'Permanent' : 'Temporary'}`);
-      return isPersisted;
+      return await navigator.storage.persist();
     }
     return false;
   },
 
-  getIsSynced: (): boolean => !!supabase,
-
-  saveRoutine: async (routine: DailyRoutine, user?: User): Promise<void> => {
-    const allData = storageService.getAllRoutines();
-    allData[routine.date] = routine;
-    localStorage.setItem(GLOBAL_ROUTINE_KEY, JSON.stringify(allData));
-    
-    if (user && supabase) {
-      await cloudService.saveToCloud(user.id, user.username, storageService.getRawData(user.id));
-    }
-    // Update a "last saved" timestamp in local storage
-    localStorage.setItem('chronos_last_saved', new Date().toISOString());
+  saveSession: (user: User) => localStorage.setItem(SESSION_KEY, JSON.stringify(user)),
+  getSession: (): User => {
+    try {
+      const session = localStorage.getItem(SESSION_KEY);
+      if (session) return JSON.parse(session);
+    } catch (e) {}
+    const defaultUser = { id: 'local-default-id', username: 'Local User' };
+    storageService.saveSession(defaultUser);
+    return defaultUser;
   },
-
-  getLastSavedTime: (): string | null => {
-    return localStorage.getItem('chronos_last_saved');
-  },
-
-  getRoutine: (date: string): DailyRoutine => {
-    const allData = storageService.getAllRoutines();
-    return allData[date] || { date, tasks: [] };
-  },
-
-  getAllRoutines: (): Record<string, DailyRoutine> => {
-    const stored = localStorage.getItem(GLOBAL_ROUTINE_KEY);
-    return stored ? JSON.parse(stored) : {};
-  },
-
-  saveTargets: async (targets: Target[], user?: User): Promise<void> => {
-    localStorage.setItem(GLOBAL_TARGETS_KEY, JSON.stringify(targets));
-    if (user && supabase) {
-      await cloudService.saveToCloud(user.id, user.username, storageService.getRawData(user.id));
-    }
-    localStorage.setItem('chronos_last_saved', new Date().toISOString());
-  },
-
-  getTargets: (): Target[] => {
-    const stored = localStorage.getItem(GLOBAL_TARGETS_KEY);
-    return stored ? JSON.parse(stored) : [];
-  },
-
-  getTemplates: (): Template[] => {
-    const stored = localStorage.getItem(GLOBAL_TEMPLATES_KEY);
-    return stored ? JSON.parse(stored) : [];
-  },
-
-  deleteTemplate: (id: string): void => {
-    const templates = storageService.getTemplates();
-    const updated = templates.filter(t => t.id !== id);
-    localStorage.setItem(GLOBAL_TEMPLATES_KEY, JSON.stringify(updated));
-  },
-
+  clearSession: () => localStorage.removeItem(SESSION_KEY),
+  
+  // Fix: Add loginUser method for AuthView login logic
   loginUser: async (username: string, password: string): Promise<User | null> => {
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('chronos_sync')
-          .select('*')
-          .eq('username', username)
-          .eq('password', password)
-          .single();
-
-        if (data && !error) {
-          if (data.data) {
-            storageService.importAllData(btoa(JSON.stringify(data.data)));
-          }
-          return { id: data.user_id, username: data.username };
-        }
-      } catch (e) {
-        console.warn("Supabase login failed, checking local users.");
+    try {
+      const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+      const user = users.find((u: any) => u.username === username && u.password === password);
+      if (user) {
+        const sessionUser = { id: user.id, username: user.username };
+        storageService.saveSession(sessionUser);
+        return sessionUser;
       }
-    }
-
-    const stored = localStorage.getItem(USERS_KEY);
-    const users = stored ? JSON.parse(stored) : [];
-    const user = users.find((u: any) => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
-    if (user) {
-      return { id: user.id, username: user.username };
-    }
+    } catch (e) {}
     return null;
   },
 
+  // Fix: Add registerUser method for AuthView registration logic
   registerUser: async (username: string, password: string): Promise<User | null> => {
-    const userId = crypto.randomUUID();
-    
-    if (supabase) {
-      try {
-        const { error } = await supabase
-          .from('chronos_sync')
-          .insert({ user_id: userId, username, password, data: {} });
-        
-        if (error) {
-          console.error("Supabase registration error:", error);
-          if (error.code === '23505') return null;
-        }
-      } catch (e) {
-        console.warn("Supabase registration failed, registering locally only.");
-      }
-    }
-
-    const stored = localStorage.getItem(USERS_KEY);
-    const users = stored ? JSON.parse(stored) : [];
-    if (users.some((u: any) => u.username.toLowerCase() === username.toLowerCase())) return null;
-    
-    users.push({ id: userId, username, password });
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
-    
-    return { id: userId, username };
+    try {
+      const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+      if (users.find((u: any) => u.username === username)) return null;
+      const newUser = { id: crypto.randomUUID(), username, password };
+      users.push(newUser);
+      localStorage.setItem(USERS_KEY, JSON.stringify(users));
+      const sessionUser = { id: newUser.id, username: newUser.username };
+      storageService.saveSession(sessionUser);
+      return sessionUser;
+    } catch (e) {}
+    return null;
   },
 
-  getRawData: (userId?: string): any => {
-    return {
+  // Data Fetching
+  getAllRoutines: (): Record<string, DailyRoutine> => {
+    try {
+      return JSON.parse(localStorage.getItem(GLOBAL_ROUTINE_KEY) || '{}');
+    } catch (e) { return {}; }
+  },
+  getTargets: (): Target[] => {
+    try {
+      return JSON.parse(localStorage.getItem(GLOBAL_TARGETS_KEY) || '[]');
+    } catch (e) { return []; }
+  },
+  getTemplates: (): Template[] => {
+    try {
+      return JSON.parse(localStorage.getItem(GLOBAL_TEMPLATES_KEY) || '[]');
+    } catch (e) { return []; }
+  },
+
+  // Data Saving
+  saveRoutine: async (routine: DailyRoutine) => {
+    const data = storageService.getAllRoutines();
+    data[routine.date] = routine;
+    localStorage.setItem(GLOBAL_ROUTINE_KEY, JSON.stringify(data));
+    localStorage.setItem('chronos_last_saved', new Date().toISOString());
+  },
+  saveTargets: async (targets: Target[]) => {
+    localStorage.setItem(GLOBAL_TARGETS_KEY, JSON.stringify(targets));
+    localStorage.setItem('chronos_last_saved', new Date().toISOString());
+  },
+
+  // Fix: Add deleteTemplate for template management in TemplatesView
+  deleteTemplate: (id: string) => {
+    const templates = storageService.getTemplates();
+    const filtered = templates.filter(t => t.id !== id);
+    localStorage.setItem(GLOBAL_TEMPLATES_KEY, JSON.stringify(filtered));
+  },
+
+  getLastSavedTime: () => localStorage.getItem('chronos_last_saved'),
+
+  // THE NEW SYNC KEY SYSTEM (Replaces File system)
+  generateSyncKey: (): string => {
+    const data = {
       routines: storageService.getAllRoutines(),
       targets: storageService.getTargets(),
       templates: storageService.getTemplates(),
-      exportedAt: new Date().toISOString(),
+      version: '2.0',
+      timestamp: Date.now()
     };
+    return toToken(JSON.stringify(data));
   },
 
-  exportAllData: (userId?: string): string => {
-    return btoa(JSON.stringify(storageService.getRawData(userId)));
-  },
-
-  importAllData: (syncToken: string): boolean => {
+  applySyncKey: (token: string): boolean => {
     try {
-      const raw = atob(syncToken);
+      const raw = fromToken(token);
       if (!raw) return false;
-      const decoded = JSON.parse(raw);
+      const data = JSON.parse(raw);
       
-      if (decoded.routines) localStorage.setItem(GLOBAL_ROUTINE_KEY, JSON.stringify(decoded.routines));
-      if (decoded.targets) localStorage.setItem(GLOBAL_TARGETS_KEY, JSON.stringify(decoded.targets));
-      if (decoded.templates) localStorage.setItem(GLOBAL_TEMPLATES_KEY, JSON.stringify(decoded.templates));
-      
+      if (!data.routines && !data.targets) return false;
+
+      // Sanitized Routine Import
+      if (data.routines) {
+        const sanitized: Record<string, DailyRoutine> = {};
+        Object.entries(data.routines).forEach(([date, r]: [string, any]) => {
+          sanitized[date] = {
+            date: r.date || date,
+            tasks: Array.isArray(r.tasks) ? r.tasks : [],
+            notes: r.notes || '',
+            mediaLinks: Array.isArray(r.mediaLinks) ? r.mediaLinks : []
+          };
+        });
+        localStorage.setItem(GLOBAL_ROUTINE_KEY, JSON.stringify(sanitized));
+      }
+
+      // Sanitized Target Import
+      if (data.targets) {
+        localStorage.setItem(GLOBAL_TARGETS_KEY, JSON.stringify(data.targets));
+      }
+
+      if (data.templates) {
+        localStorage.setItem(GLOBAL_TEMPLATES_KEY, JSON.stringify(data.templates));
+      }
+
+      localStorage.setItem('chronos_last_saved', new Date().toISOString());
       return true;
     } catch (e) {
+      console.error("Sync Key error:", e);
       return false;
     }
+  },
+
+  // Fix: Add importAllData as an alias for applySyncKey to fix error in AuthView
+  importAllData: (token: string): boolean => {
+    return storageService.applySyncKey(token);
   }
 };
