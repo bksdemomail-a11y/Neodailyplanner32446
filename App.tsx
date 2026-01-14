@@ -29,15 +29,12 @@ const App: React.FC = () => {
 
   const isCloudConnected = cloudService.isAvailable();
 
-  // Unified load function that can be called to refresh state without browser reloads
   const loadTemporalData = useCallback(async () => {
     try {
       const routines = storageService.getAllRoutines();
       setAllRoutines(routines || {});
-      
       const t = storageService.getTargets();
       setTargets(Array.isArray(t) ? t : []);
-      
       setLastSaved(storageService.getLastSavedTime());
     } catch (e) {
       console.error("Load Error:", e);
@@ -93,7 +90,6 @@ const App: React.FC = () => {
     const newTasks = editingTask?.id ? routine.tasks.map(t => t.id === task.id ? task : t) : [...routine.tasks, task];
     newTasks.sort((a, b) => a.startTime - b.startTime);
     const updatedRoutine = { ...routine, tasks: newTasks };
-    
     storageService.saveRoutine(updatedRoutine);
     setAllRoutines({ ...allRoutines, [dateKey]: updatedRoutine });
     setNotification({ msg: 'Temporal Point Committed', type: 'success' });
@@ -242,7 +238,7 @@ const App: React.FC = () => {
           {viewMode === ViewMode.TARGETS && <TargetsView targets={targets} onUpdateTargets={updateTargets} />}
           {viewMode === ViewMode.SYNC && <SyncView onSyncRefresh={() => { loadTemporalData(); setViewMode(ViewMode.PLANNER); }} />}
           {viewMode === ViewMode.WEATHER && <WeatherView />}
-          {viewMode === ViewMode.DAILY_STATS && <DailyStatsView routine={routine} onBack={() => setViewMode(ViewMode.PLANNER)} />}
+          {viewMode === ViewMode.DAILY_STATS && <DailyStatsView allRoutines={allRoutines} activeDate={currentDate} onBack={() => setViewMode(ViewMode.PLANNER)} />}
           {viewMode === ViewMode.REFLECTION && <ReflectionView routine={routine} onUpdate={handleUpdateRoutine} onNotification={(m, t) => setNotification({msg:m, type:t})} onBack={() => setViewMode(ViewMode.PLANNER)} />}
         </div>
       </main>
