@@ -8,6 +8,14 @@ interface AuthViewProps {
   onAuthSuccess: (user: User) => void;
 }
 
+// Explicit type guard to satisfy strict compiler checks in build environment
+function isUser(obj: any): obj is User {
+  return obj !== null && 
+         typeof obj === 'object' && 
+         typeof obj.id === 'string' && 
+         typeof obj.username === 'string';
+}
+
 const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [isImporting, setIsImporting] = useState(false);
@@ -23,26 +31,23 @@ const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
     setSuccess('');
 
     try {
-      if (isLogin) {
-        // Explicitly await and type the result to satisfy the compiler
-        const loggedUser: User | null = await storageService.loginUser(username, password);
-        if (loggedUser) {
-          onAuthSuccess(loggedUser);
-        } else {
-          setError('Invalid username or password on this device.');
-        }
+      // Direct assignment from awaited call
+      const result: User | null = isLogin 
+        ? await storageService.loginUser(username, password)
+        : await storageService.registerUser(username, password);
+
+      // Use strict type guard before passing to callback
+      if (isUser(result)) {
+        onAuthSuccess(result);
       } else {
-        // Explicitly await and type the result for registration
-        const registeredUser: User | null = await storageService.registerUser(username, password);
-        if (registeredUser) {
-          // Pass the successfully resolved User object to the success callback
-          onAuthSuccess(registeredUser);
-        } else {
-          setError('Username already exists or cloud registration failed.');
-        }
+        setError(isLogin 
+          ? 'Invalid username or password on this device.' 
+          : 'Username already exists or registration failed.'
+        );
       }
     } catch (err) {
-      setError('An unexpected error occurred. Please try again.');
+      console.error("Authentication Error:", err);
+      setError('An unexpected system error occurred. Please try again.');
     }
   };
 

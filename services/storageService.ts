@@ -17,7 +17,7 @@ const supabase = (SUPABASE_URL && SUPABASE_KEY)
 export const cloudService = {
   isAvailable: () => !!supabase,
 
-  saveToCloud: async (userId: string, username: string, payload: any) => {
+  saveToCloud: async (userId: string, username: string, payload: any): Promise<boolean> => {
     if (!supabase) return false;
     try {
       const { error } = await supabase
@@ -36,7 +36,7 @@ export const cloudService = {
     }
   },
 
-  loadFromCloud: async (username: string) => {
+  loadFromCloud: async (username: string): Promise<any | null> => {
     if (!supabase) return null;
     try {
       const { data, error } = await supabase
@@ -54,16 +54,16 @@ export const cloudService = {
 };
 
 export const storageService = {
-  requestPersistence: async () => {
+  requestPersistence: async (): Promise<boolean> => {
     if (navigator.storage && navigator.storage.persist) {
       return await navigator.storage.persist();
     }
     return false;
   },
 
-  getIsSynced: () => !!supabase,
+  getIsSynced: (): boolean => !!supabase,
 
-  saveRoutine: async (routine: DailyRoutine, user?: User) => {
+  saveRoutine: async (routine: DailyRoutine, user?: User): Promise<void> => {
     const allData = storageService.getAllRoutines();
     allData[routine.date] = routine;
     localStorage.setItem(GLOBAL_ROUTINE_KEY, JSON.stringify(allData));
@@ -83,7 +83,7 @@ export const storageService = {
     return stored ? JSON.parse(stored) : {};
   },
 
-  saveTargets: async (targets: Target[], user?: User) => {
+  saveTargets: async (targets: Target[], user?: User): Promise<void> => {
     localStorage.setItem(GLOBAL_TARGETS_KEY, JSON.stringify(targets));
     if (user && supabase) {
       await cloudService.saveToCloud(user.id, user.username, storageService.getRawData(user.id));
@@ -100,8 +100,7 @@ export const storageService = {
     return stored ? JSON.parse(stored) : [];
   },
 
-  // Added deleteTemplate to support template removal as required by TemplatesView
-  deleteTemplate: (id: string) => {
+  deleteTemplate: (id: string): void => {
     const templates = storageService.getTemplates();
     const updated = templates.filter(t => t.id !== id);
     localStorage.setItem(GLOBAL_TEMPLATES_KEY, JSON.stringify(updated));
@@ -118,7 +117,6 @@ export const storageService = {
         .single();
 
       if (data && !error) {
-        // Sync cloud data to local storage on login
         if (data.data) {
           storageService.importAllData(btoa(JSON.stringify(data.data)));
         }
@@ -159,7 +157,7 @@ export const storageService = {
     return { id: userId, username };
   },
 
-  getRawData: (userId?: string) => {
+  getRawData: (userId?: string): any => {
     return {
       routines: storageService.getAllRoutines(),
       targets: storageService.getTargets(),
