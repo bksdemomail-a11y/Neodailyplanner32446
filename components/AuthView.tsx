@@ -31,9 +31,9 @@ const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
           setError('Invalid username or password on this device.');
         }
       } else {
-        const user = storageService.registerUser(username, password);
+        const user = await storageService.registerUser(username, password);
         if (user) {
-          await storageService.loginUser(username, password);
+          // Sync state and notify app of successful login after registration
           onAuthSuccess(user);
         } else {
           setError('Username already exists');
