@@ -6,11 +6,14 @@ const GLOBAL_ROUTINE_KEY = 'chronos_planner_data_global';
 const GLOBAL_TARGETS_KEY = 'chronos_targets_data_global';
 const GLOBAL_TEMPLATES_KEY = 'chronos_templates_data_global';
 const USERS_KEY = 'chronos_users_data_global';
+const SESSION_KEY = 'chronos_active_session';
 
+// Environment variables from Vite/Vercel
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY;
 
-const supabase = (SUPABASE_URL && SUPABASE_KEY) 
+// Initialize Supabase only if keys exist
+const supabase = (SUPABASE_URL && SUPABASE_KEY && SUPABASE_URL !== "undefined") 
   ? createClient(SUPABASE_URL, SUPABASE_KEY) 
   : null;
 
@@ -31,7 +34,7 @@ export const cloudService = {
       
       return !error;
     } catch (e) {
-      console.error("Supabase Save Error:", e);
+      console.warn("Cloud sync unavailable, continuing with local storage.");
       return false;
     }
   },
@@ -54,9 +57,24 @@ export const cloudService = {
 };
 
 export const storageService = {
+  // Session Persistence
+  saveSession: (user: User) => {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+  },
+  getSession: (): User | null => {
+    const session = localStorage.getItem(SESSION_KEY);
+    return session ? JSON.parse(session) : null;
+  },
+  clearSession: () => {
+    localStorage.removeItem(SESSION_KEY);
+  },
+
+  // Request the browser to keep data forever
   requestPersistence: async (): Promise<boolean> => {
     if (navigator.storage && navigator.storage.persist) {
-      return await navigator.storage.persist();
+      const isPersisted = await navigator.storage.persist();
+      console.log(`Storage persistence: ${isPersisted ? 'Permanent' : 'Temporary'}`);
+      return isPersisted;
     }
     return false;
   },
@@ -71,6 +89,12 @@ export const storageService = {
     if (user && supabase) {
       await cloudService.saveToCloud(user.id, user.username, storageService.getRawData(user.id));
     }
+    // Update a "last saved" timestamp in local storage
+    localStorage.setItem('chronos_last_saved', new Date().toISOString());
+  },
+
+  getLastSavedTime: (): string | null => {
+    return localStorage.getItem('chronos_last_saved');
   },
 
   getRoutine: (date: string): DailyRoutine => {
@@ -88,6 +112,7 @@ export const storageService = {
     if (user && supabase) {
       await cloudService.saveToCloud(user.id, user.username, storageService.getRawData(user.id));
     }
+    localStorage.setItem('chronos_last_saved', new Date().toISOString());
   },
 
   getTargets: (): Target[] => {
@@ -107,24 +132,26 @@ export const storageService = {
   },
 
   loginUser: async (username: string, password: string): Promise<User | null> => {
-    // 1. Try Cloud First if available
     if (supabase) {
-      const { data, error } = await supabase
-        .from('chronos_sync')
-        .select('*')
-        .eq('username', username)
-        .eq('password', password)
-        .single();
+      try {
+        const { data, error } = await supabase
+          .from('chronos_sync')
+          .select('*')
+          .eq('username', username)
+          .eq('password', password)
+          .single();
 
-      if (data && !error) {
-        if (data.data) {
-          storageService.importAllData(btoa(JSON.stringify(data.data)));
+        if (data && !error) {
+          if (data.data) {
+            storageService.importAllData(btoa(JSON.stringify(data.data)));
+          }
+          return { id: data.user_id, username: data.username };
         }
-        return { id: data.user_id, username: data.username };
+      } catch (e) {
+        console.warn("Supabase login failed, checking local users.");
       }
     }
 
-    // 2. Fallback to Local Storage
     const stored = localStorage.getItem(USERS_KEY);
     const users = stored ? JSON.parse(stored) : [];
     const user = users.find((u: any) => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
@@ -137,16 +164,21 @@ export const storageService = {
   registerUser: async (username: string, password: string): Promise<User | null> => {
     const userId = crypto.randomUUID();
     
-    // 1. Register in Cloud if available
     if (supabase) {
-      const { error } = await supabase
-        .from('chronos_sync')
-        .insert({ user_id: userId, username, password, data: {} });
-      
-      if (error) return null;
+      try {
+        const { error } = await supabase
+          .from('chronos_sync')
+          .insert({ user_id: userId, username, password, data: {} });
+        
+        if (error) {
+          console.error("Supabase registration error:", error);
+          if (error.code === '23505') return null;
+        }
+      } catch (e) {
+        console.warn("Supabase registration failed, registering locally only.");
+      }
     }
 
-    // 2. Always register locally as fallback
     const stored = localStorage.getItem(USERS_KEY);
     const users = stored ? JSON.parse(stored) : [];
     if (users.some((u: any) => u.username.toLowerCase() === username.toLowerCase())) return null;
