@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Target, COLORS } from '../types';
 import { Icons } from '../constants';
+import { storageService } from '../services/storageService';
 
 // Define the missing TargetsViewProps interface
 interface TargetsViewProps {
@@ -41,7 +42,56 @@ const Sparkline: React.FC<{ data: number[], color: string }> = ({ data, color })
   );
 };
 
-// Fixed: The TargetsView component now has access to the TargetsViewProps interface.
+// TargetCountdownCard Component
+const TargetCountdownCard: React.FC<{ target: Target }> = ({ target }) => {
+  const user = storageService.getSession();
+  
+  const calculateCountdown = useMemo(() => {
+    const startDate = new Date(target.startDate);
+    const endDate = new Date(startDate);
+    endDate.setDate(startDate.getDate() + target.totalDays);
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const diffTime = endDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    const formattedEndDate = endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+    const dailyReq = target.targetAmount ? (target.targetAmount / target.totalDays).toFixed(1).replace('.0', '') : '1';
+    
+    return {
+      remainingDays: Math.max(0, diffDays),
+      endDateStr: formattedEndDate,
+      dailyRequirement: dailyReq
+    };
+  }, [target]);
+
+  if (target.isArchived || !target.targetAmount) return null;
+
+  return (
+    <div className="mb-6 p-6 bg-gradient-to-br from-slate-900 to-black border border-sky-500/30 rounded-3xl shadow-2xl animate-in fade-in slide-in-from-top-4">
+      <div className="flex items-start gap-4">
+        <div className="p-3 bg-sky-500/20 text-sky-400 rounded-2xl">
+          <Icons.Sparkles />
+        </div>
+        <div>
+          <h4 className="text-white font-bold text-lg leading-snug">
+            Hey {user.username}, track e thako. {calculateCountdown.endDateStr} tarikh porjonto protidin {calculateCountdown.dailyRequirement} ta kore {target.targetUnit || 'কাজ'} করলে {target.targetAmount} টা {target.targetUnit || 'কাজ'} complete হয়ে যাবে। এখনো মাত্র {calculateCountdown.remainingDays} দিন আছে।
+          </h4>
+          <div className="flex items-center gap-3 mt-3">
+             <div className="flex items-center gap-1.5 px-3 py-1 bg-white/5 border border-white/5 rounded-full">
+                <div className="w-1 h-1 bg-sky-400 rounded-full animate-pulse" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Countdown Active</span>
+             </div>
+             <span className="text-[10px] font-black uppercase tracking-widest text-sky-500">{calculateCountdown.remainingDays} Days Left</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const TargetsView: React.FC<TargetsViewProps> = ({ targets, onUpdateTargets }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [filter, setFilter] = useState<'active' | 'archived'>('active');
@@ -49,6 +99,8 @@ const TargetsView: React.FC<TargetsViewProps> = ({ targets, onUpdateTargets }) =
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newDuration, setNewDuration] = useState('30');
+  const [newTargetAmount, setNewTargetAmount] = useState('');
+  const [newTargetUnit, setNewTargetUnit] = useState('');
   const [newColor, setNewColor] = useState(COLORS[0].hex);
 
   const addTarget = (e: React.FormEvent) => {
@@ -58,6 +110,8 @@ const TargetsView: React.FC<TargetsViewProps> = ({ targets, onUpdateTargets }) =
       title: newTitle,
       description: newDescription,
       totalDays: parseInt(newDuration),
+      targetAmount: newTargetAmount ? parseInt(newTargetAmount) : undefined,
+      targetUnit: newTargetUnit || undefined,
       startDate: new Date().toISOString().split('T')[0],
       completedDates: [],
       missedDates: [],
@@ -68,6 +122,8 @@ const TargetsView: React.FC<TargetsViewProps> = ({ targets, onUpdateTargets }) =
     setIsAdding(false);
     setNewTitle('');
     setNewDescription('');
+    setNewTargetAmount('');
+    setNewTargetUnit('');
   };
 
   const toggleDayStatus = (targetId: string, status: 'complete' | 'miss') => {
@@ -141,6 +197,16 @@ const TargetsView: React.FC<TargetsViewProps> = ({ targets, onUpdateTargets }) =
                   <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-3">Context</label>
                   <textarea value={newDescription} onChange={e => setNewDescription(e.target.value)} placeholder="Why does this matter?..." rows={3} className="w-full px-6 py-4 bg-black/40 border border-white/5 text-white rounded-2xl focus:ring-2 focus:ring-sky-500 outline-none font-medium resize-none" />
                 </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-3">Total Target</label>
+                    <input type="number" value={newTargetAmount} onChange={e => setNewTargetAmount(e.target.value)} placeholder="e.g. 63" className="w-full px-6 py-4 bg-black/40 border border-white/5 text-white rounded-2xl focus:ring-2 focus:ring-sky-500 outline-none font-bold" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-3">Unit</label>
+                    <input type="text" value={newTargetUnit} onChange={e => setNewTargetUnit(e.target.value)} placeholder="e.g. videos" className="w-full px-6 py-4 bg-black/40 border border-white/5 text-white rounded-2xl focus:ring-2 focus:ring-sky-500 outline-none font-bold" />
+                  </div>
+                </div>
               </div>
               <div className="space-y-6">
                 <div>
@@ -169,6 +235,13 @@ const TargetsView: React.FC<TargetsViewProps> = ({ targets, onUpdateTargets }) =
           </form>
         </div>
       )}
+
+      {/* Target Countdown Section */}
+      <div className="mb-10">
+        {targets.filter(t => !t.isArchived && t.targetAmount).map(t => (
+          <TargetCountdownCard key={`countdown-${t.id}`} target={t} />
+        ))}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
         {targets.filter(t => filter === 'active' ? !t.isArchived : t.isArchived).map(target => {

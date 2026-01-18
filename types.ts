@@ -36,6 +36,8 @@ export type Target = {
   title: string;
   description?: string;
   totalDays: number;
+  targetAmount?: number; // e.g., 63
+  targetUnit?: string;   // e.g., "videos"
   startDate: string; // YYYY-MM-DD
   completedDates: string[]; // List of YYYY-MM-DD
   missedDates: string[]; // List of YYYY-MM-DD
